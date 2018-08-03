@@ -13,25 +13,19 @@ have been included that require approval from COMCIFS.  In particular:
    is part of an update to allow multi-key categories.
 
 
-Note that this file is laid out to allow automatic production of a parser using Grammatica. The
-EBNF used differs from the ISO standard as follows:
+Note that this file is laid out to allow automatic production of the Lark parser. The
+EBNF used here differs from the ISO standard as follows:
 
 1. Sequences of characters may be denoted by strings
 2. The expression separator is a space, not a comma
 3. Character ranges may be included in tokens to save space
-4. The grammar file is separated into header, token and productions rather than just
-   productions. The tokens can be considered to be productions.
-   
+4. Regular expressions are used to create tokens.
+
+Postprocessing of this file changes '=' to ':' in productions and removes trailing
+semicolons.
+
 TODO: include whitespace.  Whitespace in only significant where it is necessary
 to disambiguate productions.
-
-Header material
----------------
-
-The following material is required by Grammatica. ::
-
-    %header%
-    GRAMMARTYPE = "LL"
     
 Tokens
 ------
@@ -41,8 +35,7 @@ case-insensitive, but this has been left out of the productions below for brevit
 As this list is intended to be input into a system, the most specific values must
 come first. ::
 
-    %tokens%
-    newline = <<[\r\n]+>>
+    NEWLINE = /[\r\n]+/
     ISEQUAL = "=="
     PWR = "**"
     NEQ = "!="
@@ -74,65 +67,66 @@ come first. ::
     RSQUAREB = "]"
     COLON = ":"
     SEMI = ";"
-    INTEGER = <<[0-9]+>>
-    OCTINT = <<0o[0-7]+>>
-    HEXINT = <<0x[0-9A-Fa-f]+>>
-    BININT = <<0b[0-1]+>>
+    INTEGER = /[0-9]+/
+    OCTINT = /0o[0-7]+/
+    HEXINT = /0x[0-9A-Fa-f]+/
+    BININT = /0b[0-1]+/
 
 A real number must contain a decimal point, and may be
 optionally followed by an exponent after the letter "E". A digit before the
 decimal point is not required. ::
     
-    REAL = <<(([0-9]+\.[0-9]*)|(\.[0-9]+))[Ee][+-]?[0-9]+>>
+    REAL = /(([0-9]+\.[0-9]*)|(\.[0-9]+))[Ee][+-]?[0-9]+/
 
 An imaginary number is a real or integer followed by the letter "j". ::
     
-    IMAGINARY = <<((([0-9]+\.[0-9]*)|(\.[0-9]+))[Ee][+-]?[0-9]+)|([0-9]+)[jJ]>>
+    IMAGINARY = /((([0-9]+\.[0-9]*)|(\.[0-9]+))[Ee][+-]?[0-9]+)|([0-9]+)[jJ]/
 
 A longstring is enclosed in triple quotes or triple double quotes, and
-may contain newline. TODO: check that backslashes work properly.::
+may contain NEWLINE. TODO: check that backslashes work properly.::
 
-    LONGSTRING = <<'''[.\n&&[^\\]][.\n]*'''|"""[.\n&&[^\\]][.\n]*""">>
-    SHORTSTRING = <<'[^']*'|"[^"]">>
+    LONGSTRING = /'''[^\\][.\n]*'''|"""[^\\][.\n]*"""/
+    SHORTSTRING = /'[^']*'|"[^"]"/
 
 Keywords. These are case insensitive, but this is ignored below.::
 
-    AND = "AND"
-    OR = "OR"
-    IN = "IN"
-    NOT = "NOT"
-    DO = "DO"
-    FOR = "FOR"
-    LOOP = "LOOP"
-    AS = "AS"
-    WITH = "WITH"
-    WHERE = "WHERE"
-    ELSE = "ELSE"
-    NEXT = "NEXT"
-    BREAK = "BREAK"
-    IF = "IF"
-    FUNCTION = "FUNCTION"
-    REPEAT = "REPEAT"
+    AND = "and"
+    OR = "or"
+    IN = "in"
+    NOT = "not"
+    DO = "do"
+    FOR = "for"
+    LOOP = "loop"
+    AS = "as"
+    WITH = "with"
+    WHERE = "where"
+    ELSE = "else"
+    NEXT = "next"
+    BREAK = "break"
+    IF = "if"
+    FUNCTION = "function"
+    REPEAT = "repeat"
 
-Identifiers must begin with a letter and may contain alphanumerics, underscore and
+Identifiers must begin with a letter or underscore and may contain alphanumerics, underscore and
 the dollar sign. ::
 
-    ID = <<[A-Za-z][A-Za-z0-9_$]*>>
+    ID = /[A-Za-z_][A-Za-z0-9_$]*/
 
 Comments begin with a hash and continue to the end of the line. ::
 
-    COMMENT = <<#.*>> %ignore%
+    COMMENT = /#.*/
+    %ignore COMMENT
 
 Whitespace is not often significant. ::
 
-    WHITESPACE = <<[ \t]+>> %ignore%
+    WHITESPACE = /[ \t]+/
+    %ignore WHITESPACE
 
     
 Literals
 --------
 Literals are either identifiers, string literals or numbers ::
 
-    %productions%
     literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | REAL | IMAGINARY ;
     
 Atoms
@@ -148,16 +142,16 @@ An enclosure is either a list, a table or a list of expressions enclosed in roun
     parenth_form = "("  expression_list  ")" ;
 
 A list is formed by comma-delimited expressions inside square brackets, with
-optional newlines anywhere inside the brackets. Trailing commas are not allowed. ::
+optional NEWLINEs anywhere inside the brackets. Trailing commas are not allowed. ::
     
-    list_display = "["  { newline }   expression_list  { newline }  "]" ;
-    expression_list = expression | ( expression_list  ","  { newline }  expression ) ;
+    list_display = "["  { NEWLINE }   expression_list  { NEWLINE }  "]" ;
+    expression_list = expression | ( expression_list  ","  { NEWLINE }  expression ) ;
 
 A table is formed from a comma-delimited list of key:value pairs enclosed in braces. A
-trailing comma is not allowed. Newlines are allowed outside the key:value pairs. ::
+trailing comma is not allowed. NEWLINEs are allowed outside the key:value pairs. ::
     
-    table_display = "{"  {newline}  table_contents  {newline}  "}" ;
-    table_contents = table_entry | (table_contents "," {newline}  table_entry ) ;
+    table_display = "{"  {NEWLINE}  table_contents  {NEWLINE}  "}" ;
+    table_contents = table_entry | (table_contents "," {NEWLINE}  table_entry ) ;
     table_entry = SHORTSTRING  ":"  expression ;
 
 Primaries
@@ -208,19 +202,19 @@ Operators act on primaries.
 The power operator raises the primary to the power of the second expression,
 which is essentially a signed power expression. ::
 
-    u_expr = [("-"|"+")] primary  { "**"  (["+"|"-"]) primary } ;
+    power = primary  [ "**"  factor ] ;
     
-A sign may optionally prefix a primary (cancelled) ::
+A sign may optionally prefix a primary. ::
 
-    // u_expr = power | [("-"| "+")  power ] ;
+    factor = power |  ("-"| "+")  factor  ;
 
 Multiplication, division and cross product operations. ::
 
-    m_expr = u_expr | [ m_expr  ("*"|"/"|"^")  u_expr];
+    term = factor {  ("*"|"/"|"^")  factor } ;
 
 Addition and subtraction. ::
 
-    a_expr = m_expr | [ a_expr  ("+"|"-")  m_expr ];
+    arith = term  {("+"|"-")  term } ;
 
 We split the definition of comparison operators into two sets here so that
 we can use a subset of comparison operations in compound statements
@@ -234,7 +228,7 @@ The full set of comparison operators. ::
 
 A comparison is performed between two mathematical expressions. ::
 
-    comparison = a_expr  [ comp_operator  a_expr ] ;
+    comparison = arith  { comp_operator  arith } ;
 
 The resulting logical value can be tested using logical operations. Logical
 negation using "NOT" can be repeated arbitrarily many times. ::
@@ -244,8 +238,8 @@ negation using "NOT" can be repeated arbitrarily many times. ::
 Logical AND has lower precedence than NOT, followed by logical OR. TODO: can
 we construct an expression that has an or_test in second position?::
 
-    and_test = not_test | (and_test  (AND | BADAND )  not_test ) ;
-    or_test  = and_test | (or_test  (OR | BADOR )  and_test );
+    and_test = not_test  {  (AND | BADAND )  not_test } ;
+    or_test  = and_test  { (OR | BADOR )  and_test } ;
 
 The OR test is the least-tightly bound operation on primaries, so becomes the same
 production as that for an expression. ::
@@ -258,19 +252,19 @@ Statements
 Expressions by themselves yield values. In order to act on these values, statements
 are constructed from expressions and keywords.  Statements may be either simple,
 or compound. Simple statements do not contain
-other statements. A series of simple statements may be separated by newlines, and
+other statements. A series of simple statements may be separated by NEWLINEs, and
 may also be separated by semicolons, but compound statements require no such
 separators. TODO - surely this can be cleaned up?::
 
     statements = statement | (statements statement) ;
-    statement = (simple_statement  [";"]  newline  { newline }) | compound_statement ;
+    statement = (simple_statement  [";"]  NEWLINE  { NEWLINE }) | compound_statement ;
     simple_statement = small_statement | (simple_statement  ";"  small_statement) ;
 
 Simple statements include one-word statements as well as expression lists, and
 augmented assignment statements. TODO: shouldn"t we include assignments separately?::
 
     small_statement = expr_stmt | BREAK | NEXT ;
-    expr_stmt = (expression_list  [ (AUGOP | "=")  expression_list ] ) | dotlist_assign ;
+    expr_stmt = (expression_list  [ (augop | "=")  expression_list ] ) | dotlist_assign ;
 
 Dotted assignments are list of assignments to dotted identifiers, used for assigning to
 multiple columns of a category object at the same time, that is, using the same row. The
@@ -287,13 +281,13 @@ and function definition compound statements. ::
 Compound statements contain "suites" of statements. Where more than one statement
 is included in a block, the statements must be enclosed in braces. ::
 
-    suite = statement | "{"  {newline}  statements  "}"  {newline} ;
+    suite = statement | "{"  {NEWLINE}  statements  "}"  {NEWLINE} ;
     
 IF statements may contain multiple conditions separated by ELSEIF keywords, or a
 single alternative action using the ELSE keyword. ::
 
     if_else_stmt = if_stmt  ELSE  suite ;
-    if_stmt = ([if_stmt  ELSEIF] | IF)  "("  expression  ")"  {newline} suite ;
+    if_stmt = ([if_stmt  ELSEIF] | IF)  "("  expression  ")"  {NEWLINE} suite ;
 
 For statements perform simple loops over the items in `expression_list`, assigning
 them in turn to the items in `id_list`. `id_list` can be optionally enclosed in
@@ -315,9 +309,10 @@ Repeat statements repeat the contents of `suite` until a `BREAK` statement is ca
 
     repeat_stmt = REPEAT suite ;
 
-With statements bind a local variable to a category variable (aliasing). ::
+With statements bind a local variable to a category variable (aliasing). This is
+required if a category name would be identical to a keyword. ::
 
-    with_stmt = WITH  ID  AS  ID  {newline}  suite ;
+    with_stmt = WITH  ID  AS  ID  {NEWLINE}  suite ;
 
 Each argument in a function definition argument list is followed by a list with two
 elements: the container type, and the type of the object in the container. ::
@@ -330,12 +325,12 @@ Complete dREL code
 
 A complete dREL method is composed of a sequence of statements. ::
 
-    input = [input | {newline}] statement ;
+    input = [input | {NEWLINE}] statement ;
 
 Literal productions
 -------------------
 Some more complex literal productions not included in tokens. ::
     
-    AUGOP = "++=" | "+=" | "-=" | "--=" | "*=" | "="; 
+    augop = "++=" | "+=" | "-=" | "--=" | "*=" | "="; 
     
-    ELSEIF = ELSE WHITESPACE+ IF ;
+    ELSEIF = ELSE IF ;
