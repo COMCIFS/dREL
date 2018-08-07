@@ -52,7 +52,7 @@ Newlines may be placed around some mathematical operators to improve readability
     AUGMUL = "*="
     AUGDROP = "--="
     ELLIPSIS = "..." 
-    BADOR = "|"
+    BADOR = "||"
     BADAND = "&&"
     LEFTPAREN = "("
     RIGHTPAREN = ")"
@@ -138,7 +138,7 @@ Comments begin with a hash and continue to the end of the line. ::
 
 Whitespace is not often significant. ::
 
-    WHITESPACE = /[ \t]+/
+    WHITESPACE = /[ \t\r\n]+/
     %ignore WHITESPACE
 
     
@@ -278,15 +278,21 @@ may also be separated by semicolons, but compound statements require no such
 separators. TODO - surely this can be cleaned up?::
 
     statements = statement | (statements statement) ;
-    statement = (simple_statement  [";"]  NEWLINE  { NEWLINE }) | compound_statement ;
+    statement = (simple_statement  [";"]  { NEWLINE }) | compound_statement ;
     simple_statement = small_statement | (simple_statement  ";"  small_statement) ;
 
-Simple statements include one-word statements and assignments, where assignment to
-multiple objects in a category using dotted lists is included. A print statement is
-provided for debugging purposes only. The output of a print statement does not form
-part of the formal behaviour of a dREL method.::
+Simple statements include one-word statements and assignments, where
+assignment to multiple objects in a category using dotted lists is
+included. An expression list is also allowed, mostly so that
+side-effect functions can be called, although this is not recommended
+and may be deprecated. In the current core CIF this is used in a
+demonstration validation function that calls an 'Alert' function.
 
-    small_statement = assignment | dotlist_assign | BREAK | NEXT | print_stmt;
+A print statement is provided for debugging purposes only.The output
+of a print statement does not form part of the formal behaviour of a
+dREL method.::
+
+    small_statement = expression_list | assignment | dotlist_assign | BREAK | NEXT | print_stmt;
     assignment =  expression_list augop expression_list ;
 
 Dotted assignments are list of assignments to dotted identifiers, used for assigning to
