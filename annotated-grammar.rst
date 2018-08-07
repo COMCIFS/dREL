@@ -12,17 +12,21 @@ have been included that require approval from COMCIFS.  In particular:
 2. Subscriptions can now include lists of embedded assignments of the form ``.id = <value>``. This
    is part of an update to allow multi-key categories.
 
+The dREL grammar is designed to nudge dREL authors into prioritising readability of the code.
+Although there are several places where newlines would not introduce ambiguity, newlines are
+generally only allowed in places where they do not unduly split up phrases. So, for example,
+newlines are acceptable immediately after opening brackets and before closing brackets, but
+are not acceptable at other points in expressions.
 
-Note that this file is laid out to allow automatic production of the Lark parser. The
-EBNF used here differs from the ISO standard as follows:
+The EBNF used here differs from the ISO standard as follows:
 
 1. Sequences of characters may be denoted by strings
 2. The expression separator is a space, not a comma
 3. Character ranges may be included in tokens to save space
 4. Regular expressions are used to create tokens.
 
-Postprocessing of this file changes '=' to ':' in productions and removes trailing
-semicolons.
+Postprocessing of this file changes '=' to ':' in productions and
+removes trailing semicolons in order to be processed through the Lark parser.
 
 TODO: include whitespace.  Whitespace in only significant where it is necessary
 to disambiguate productions.
@@ -32,8 +36,7 @@ Tokens
 
 These are the productions for all capitalised items above. Note that keywords are
 case-insensitive, but this has been left out of the productions below for brevity.
-As this list is intended to be input into a system, the most specific values must
-come first. ::
+Newlines may be placed around some mathematical operators to improve readability. ::
 
     NEWLINE = /[\r\n]+/
     ISEQUAL = "=="
@@ -72,21 +75,36 @@ come first. ::
     HEXINT = /0x[0-9A-Fa-f]+/
     BININT = /0b[0-1]+/
 
+The following productions place optional newlines near braces and around
+mathematical operators.  These could obviously be turned into regular
+expressions, but in the spirit of making as much as possible conformant with
+plain EBNF, they have been put in separate productions.::
+
+    lparen = LEFTPAREN {NEWLINE}
+    rparen = {NEWLINE} RIGHTPAREN
+    lsquare = LSQUAREB {NEWLINE}
+    rsquare = {NEWLINE} RSQUAREB
+    comma = COMMA {NEWLINE}
+    
+
 A real number must contain a decimal point, and may be
 optionally followed by an exponent after the letter "E". A digit before the
-decimal point is not required. ::
+decimal point is not required. However, this means that the category-object
+construction "t.12" could be tokenised as "ID REAL" instead of the
+manageable "ID PERIOD INTEGER", so we write out the real and imaginary
+productions in full. ::
     
-    REAL = /(([0-9]+\.[0-9]*)|(\.[0-9]+))[Ee][+-]?[0-9]+/
+    real = ((INTEGER "." {INTEGER})|("." INTEGER))[("E"|"e") ["+"|"-"] INTEGER ]
 
 An imaginary number is a real or integer followed by the letter "j". ::
     
-    IMAGINARY = /((([0-9]+\.[0-9]*)|(\.[0-9]+))[Ee][+-]?[0-9]+)|([0-9]+)[jJ]/
+    imaginary = (real | INTEGER) ("j"|"J")
 
 A longstring is enclosed in triple quotes or triple double quotes, and
 may contain NEWLINE. TODO: check that backslashes work properly.::
 
     LONGSTRING = /'''[^\\][.\n]*'''|"""[^\\][.\n]*"""/
-    SHORTSTRING = /'[^']*'|"[^"]"/
+    SHORTSTRING = /'[^']*'|"[^"]*"/
 
 Keywords. These are case insensitive, but this is ignored below.::
 
@@ -106,6 +124,7 @@ Keywords. These are case insensitive, but this is ignored below.::
     IF = "if"
     FUNCTION = "function"
     REPEAT = "repeat"
+    PRINT = "print"
 
 Identifiers must begin with a letter or underscore and may contain alphanumerics, underscore and
 the dollar sign. ::
@@ -127,7 +146,7 @@ Literals
 --------
 Literals are either identifiers, string literals or numbers ::
 
-    literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | REAL | IMAGINARY ;
+    literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | real | imaginary ;
     
 Atoms
 -----
@@ -139,18 +158,18 @@ An atom is either a literal, an identifier, or an enclosure ::
 An enclosure is either a list, a table or a list of expressions enclosed in round brackets. ::
 
     enclosure = parenth_form | list_display | table_display ;
-    parenth_form = "("  expression_list  ")" ;
+    parenth_form = lparen expression_list rparen ;
 
 A list is formed by comma-delimited expressions inside square brackets, with
 optional NEWLINEs anywhere inside the brackets. Trailing commas are not allowed. ::
     
-    list_display = "["  { NEWLINE }   expression_list  { NEWLINE }  "]" ;
-    expression_list = expression | ( expression_list  ","  { NEWLINE }  expression ) ;
+    list_display = lsquare  expression_list rsquare ;
+    expression_list = expression | ( expression_list comma expression ) ;
 
 A table is formed from a comma-delimited list of key:value pairs enclosed in braces. A
 trailing comma is not allowed. NEWLINEs are allowed outside the key:value pairs. ::
     
-    table_display = "{"  {NEWLINE}  table_contents  {NEWLINE}  "}" ;
+    table_display = "{" {NEWLINE}  table_contents {NEWLINE} "}" ;
     table_contents = table_entry | (table_contents "," {NEWLINE}  table_entry ) ;
     table_entry = SHORTSTRING  ":"  expression ;
 
@@ -163,7 +182,9 @@ attribute reference, a subscription, a slicing, or a function call. ::
     primary = atom | attributeref | subscription | slicing | call ;
 
 An attribute reference is created from a primary followed by a period and an
-identifier. In this case the identifier may include digits. ::
+identifier. In this case the identifier may include digits, so we make sure
+that any tokenised integers are included. This supports legacy datanames where
+the object part of the data name is the matrix element column+row.::
 
     attributeref = primary  "."  ( ID | INTEGER ) ;
 
@@ -191,9 +212,9 @@ in the list refers to a separate dimension of the sliced object.::
     slice_item = expression | proper_slice ;
     
 A function call is an identifier followed by round brackets enclosing a list of arguments
-to the function. ::
+to the function. TODO: why does a NEWLINE before the final paren wreck the grammar?::
 
-    call = ID  "("  [expression_list]  ")" ;
+    call = ID  lparen [expression_list] rparen ;
 
 Operators
 ---------
@@ -210,11 +231,11 @@ A sign may optionally prefix a primary. ::
 
 Multiplication, division and cross product operations. ::
 
-    term = factor {  ("*"|"/"|"^")  factor } ;
+    term = factor {  ("*"|"/"|"^") factor } ;
 
 Addition and subtraction. ::
 
-    arith = term  {("+"|"-")  term } ;
+    arith = term | ( arith ( PLUS | MINUS ) term ) ;
 
 We split the definition of comparison operators into two sets here so that
 we can use a subset of comparison operations in compound statements
@@ -228,7 +249,7 @@ The full set of comparison operators. ::
 
 A comparison is performed between two mathematical expressions. ::
 
-    comparison = arith  { comp_operator  arith } ;
+    comparison = arith | (comparison  comp_operator  arith ) ;
 
 The resulting logical value can be tested using logical operations. Logical
 negation using "NOT" can be repeated arbitrarily many times. ::
@@ -247,7 +268,7 @@ production as that for an expression. ::
     expression = or_test ;
 
 Statements
------------------
+----------
 
 Expressions by themselves yield values. In order to act on these values, statements
 are constructed from expressions and keywords.  Statements may be either simple,
@@ -260,11 +281,13 @@ separators. TODO - surely this can be cleaned up?::
     statement = (simple_statement  [";"]  NEWLINE  { NEWLINE }) | compound_statement ;
     simple_statement = small_statement | (simple_statement  ";"  small_statement) ;
 
-Simple statements include one-word statements as well as expression lists, and
-augmented assignment statements. TODO: shouldn"t we include assignments separately?::
+Simple statements include one-word statements and assignments, where assignment to
+multiple objects in a category using dotted lists is included. A print statement is
+provided for debugging purposes only. The output of a print statement does not form
+part of the formal behaviour of a dREL method.::
 
-    small_statement = expr_stmt | BREAK | NEXT ;
-    expr_stmt = (expression_list  [ (augop | "=")  expression_list ] ) | dotlist_assign ;
+    small_statement = assignment | dotlist_assign | BREAK | NEXT | print_stmt;
+    assignment =  expression_list augop expression_list ;
 
 Dotted assignments are list of assignments to dotted identifiers, used for assigning to
 multiple columns of a category object at the same time, that is, using the same row. The
@@ -272,6 +295,12 @@ production for `dotlist` is presented above in the Primaries section.::
 
     dotlist_assign = ID "("  dotlist  ")" ;
 
+A print statement outputs the supplied expression. Implementations may determine what
+types of expressions to accept, as this statement is provided purely for debugging and does
+not form part of the formal behaviour of the method. ::
+
+    print_stmt = PRINT expression ;
+    
 Compound statements contain other statements. dREL defines if, for, do, loop, with, repeat
 and function definition compound statements. ::
 
@@ -281,7 +310,7 @@ and function definition compound statements. ::
 Compound statements contain "suites" of statements. Where more than one statement
 is included in a block, the statements must be enclosed in braces. ::
 
-    suite = statement | "{"  {NEWLINE}  statements  "}"  {NEWLINE} ;
+    suite = statement | "{" {NEWLINE} statements "}" {NEWLINE} ;
     
 IF statements may contain multiple conditions separated by ELSEIF keywords, or a
 single alternative action using the ELSE keyword. ::
@@ -318,19 +347,20 @@ Each argument in a function definition argument list is followed by a list with 
 elements: the container type, and the type of the object in the container. ::
 
     funcdef = FUNCTION  ID  "("  arglist  ")"  suite ;
-    arglist = ID  ":"  "["  expression  ","  expression  "]" ;
+    arglist = one_arg | (arglist "," {NEWLINE} one_arg) 
+    one_arg = ID  ":"  "["  expression  ","  expression  "]" ;
 
 Complete dREL code
 ------------------
 
 A complete dREL method is composed of a sequence of statements. ::
 
-    input = [input | {NEWLINE}] statement ;
+    input = {NEWLINE} statements ;
 
 Literal productions
 -------------------
 Some more complex literal productions not included in tokens. ::
     
-    augop = "++=" | "+=" | "-=" | "--=" | "*=" | "="; 
+    augop = APPEND | AUGADD | AUGMIN | AUGDROP | AUGMUL | EQUALS ; 
     
     ELSEIF = ELSE IF ;

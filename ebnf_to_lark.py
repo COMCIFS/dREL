@@ -6,10 +6,10 @@ def do_filter(textstream):
     import re
     no_equals = re.sub(" = "," : ",textstream)
     no_semis = re.sub(r";\s", "\n", no_equals)
-    no_braces,n = re.subn(r"[^\"]{([^{}]+)}",r"(\1)*",no_semis)
+    no_braces,n = re.subn(r"[^\"]{([^{}]+)}",r" (\1)*",no_semis)
     print("//# Number of braces found %d" % n)
     while n > 0:
-        no_braces,n = re.subn(r"[^\"]{([^{}]+)}",r"(\1)*",no_braces)
+        no_braces,n = re.subn(r"[^\"]{([^{}]+)}",r" (\1)*",no_braces)
         print("//# Number of braces found %d" % n)
     case_insensitive = re.sub(r'("[a-z]+")',r'\1i',no_braces)
     return case_insensitive
