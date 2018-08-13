@@ -1,0 +1,443 @@
+@
+Introduction
+============
+
+The Lark grammar system allows 'Transformer' functions to be defined. Each transformer
+is named after a node in the parse tree, and takes the contents of the node as an
+argument.  The transformers in this file transform the parse tree into a piece of
+Python code assuming the following environment:
+
+1. The entire dREL method becomes a python function definition that takes as parameters
+   individual values of the data names from the category in which the definition appears.
+   This allows the function to be 'mapped' onto the category if necessary.
+
+2. The outer function also takes a cif data block object with a specified interface.
+
+3. The CIF interactions are mediated by the pycifrw package. Other Python CIF modules
+   should be pluggable.
+   
+The transformer methods may assume that any interior nodes have already been processed.
+
+
+<<*>>=
+from lark import Transformer,UnexpectedInput
+
+<<Transformer class>>
+<<Helper classes>>
+<<Utility functions>>
+
+@
+Lark top level
+--------------
+
+We inherit from the Lark Transformer class.
+
+<<Transformer class>>=
+class TreeToPy(Transformer):
+    """Convert a Lark parse tree to Python code"""
+    <<Initialise transformer>>
+    <<Statements>>
+    <<Atoms to expressions>>
+    <<Lists and tables>>
+    <<Subscriptions>>
+    <<Attributes>>
+    <<Functions>>
+
+@  Helper classes define objects that hold the data and have methods defined that allow
+the Python syntax to work.
+
+<<Helper classes>>=
+<<Category object>>
+<<A packet object>>
+
+@  `datablock` is a CifBlock object as defined in PyCIFRW. Given the dictionary and the
+category name we derive all the information we need to extract the correct row and column.
+The category object defines only the minimum necessary for access via square bracket and
+iteration.
+
+<<Category object>>=
+class CategoryObject(object):
+    def __init__(self,datablock,catname,cifdic):
+        self.__datablock = datablock
+        self.__catname = catname
+        self.__cifdic = cifdic
+        object_names = [a for a in cifdic.keys() if cifdic[a]['_name.category_id'] == catname]
+        self.__data_names = list([cifdic[a]['_definition.id'] for a in object_names])
+        self.__object_names = list([cifdic[a]['_name.object_id'] for a in self.__data_names])
+        self.__name_to_object = dict(zip(self.__data_names,self.__object_names))
+        self.__object_to_name = dict(zip(self.__object_names,self.__data_names))
+        self.__key_names = cifdic[catname].get('_category_key.name','')
+        self.__is_looped = cifdic[catname].get('_definition.class','Set') == 'Loop'
+        if self.__is_looped:
+            keylists = [datablock[k] for k in self.__key_names]
+            if len(self.__key_names)==1:
+                self.__key_index = list(keylists)[0]
+            else:
+                self.__key_index = list(zip(*keylists)) #order in tuple is same as key_names
+
+    def __getitem__(self,itemdict):
+        """getitem is passed a dictionary where the entries should
+        be the keys and the values are the requested values for
+        those keys. If only a single entry is provided and there
+        is only one key, there is no need for the key to be correct.
+        The result is a named tuple for which individual elements
+        can be accessed using 'dot'."""
+        if len(itemdict)==1 and len(self.__key_names)==1:
+            _,value = itemdict.popitem()
+            pack_no = self.__key_index.index(value)
+        else:
+            # convert object names to data names
+            index_vals = tuple([itemdict[self.__name_to_object[k]] for k in self.__key_names])
+            pack_no = self.__key_index.index(index_vals)
+        # create a function that returns the needed values
+        def get_packet_value(object_id):
+            dataname = self.__object_to_name[object_id]
+            return self.__datablock[dataname][pack_no]
+        return Packet(get_packet_value)
+
+    def __iter__(self):
+        """Iterate over all packets"""
+        # for efficiency
+        obj_names = list([self.__name_to_object[k] for k in self.__key_names])
+        for keyvals in self.__key_index:
+            if len(self.__key_names) == 1:
+                itemdict = {obj_names[0]:keyvals}
+            else:
+                itemdict = dict(zip(obj_names,keyvals))
+            yield self[itemdict]
+            
+    def __str__(self):
+        outdict = {"name":self.__catname}
+        outdict.update({"keys":str(self.__key_names)})
+        outdict.update({"objects":str(self.__object_names)})
+        outdict.update({"keylist":str(self.__key_index)})
+        return str(outdict)
+
+    def __getattr__(self,att):
+        """If unlooped this is OK"""
+        if not self.__is_looped:
+            db = self.__datablock
+            nmd = self.__object_to_name
+            return db[nmd[att]]
+        else:
+            raise(AttributeError)
+        
+@ The packet object
+The result of accessing an element of a category object is a packet object.
+A packet objects elements are accessed using ``.''. 
+
+<<A packet object>>=
+class Packet(object):
+    """An object mimicking a single row in a category, with objects accessed
+    by attribute"""
+    def __init__(self,access_function):
+        self.get_fun = access_function
+
+    def __getattribute__(self,attname):
+        return object.__getattribute__(self,'get_fun')(attname)
+                 
+@ Initialisation.   We require a lot of contextual information:
+
+1. the definition in which this definition appears, in order to identify the return value
+2. the name we wish to give the function
+3. a table mapping dREL syntactic constructs to equivalent Python strings
+4. the relevant dictionary for type and key information.
+
+<<Initialise transformer>>=
+def __init__(self, target_cat, target_object,func_table, cifdic):
+    super().__init__()
+    self.func_names = func_table
+    self.target_cat = target_cat
+    self.target_object = target_object
+    self.dic = cifdic
+    <<Internal use variables>>
+
+@         
+Variable ``special_ids`` is a list
+of scopes, each containing a table of variables that need to be
+specially handled, either because they correspond to datanames (first
+entry in list) or to variables that have been aliased to categories
+via loop or with statements.  The scoping is not used particularly
+often in the following code as the example methods do not really test
+out the scoping.
+
+A variable defined in a loop statement will also have a loop index
+that needs to be incremented and used to index a packet; this is the
+second entry in the list indexed by the variable alias. The second
+entry is also used to hold the dummy variable for the 'with'
+statement.  The generated function can thus be mapped across the keys
+of the with table to calculate the whole column of a category.
+
+The final boolean entry determines whether the second entry is for
+looping (True) or not (False).
+
+At the beginning of the traverse we initialise special_id with the
+explicit category name if we are in a loopable category, so that any
+references to items in this category will be dealt with as for
+explicit `with` statements.  Note that we append a single underscore to
+the alias to allow it to be picked up when the search for special ids
+is undertaken e.g. in the ATTRIBUTE case.
+
+<<Internal use variables>>=
+self.special_ids = [{}]   #special variable names
+self.loopable = {}     #categories that can be looped
+
+@ 
+dREL top level
+==============
+
+The final function body is output by concatenating the strings generated before,
+separated by newlines.::
+<<Statements>>=
+def input(self,args):
+    return _concat(args,"\n")
+
+def statements(self,args):
+    return _concat(args,"\n")
+
+def statement(self,args):
+    return _concat(args,"\n")
+
+def simple_statement(self,args):
+    return _concat(args,"\n")
+
+def small_statement(self,args):
+    return _concat(args)
+
+#TODO: analyse LHS/RHS information
+def assignment(self,args):
+    if args[1] == "=":   #simple assignment
+        return _concat(args)
+
+def augop(self,args):
+    return args[0]
+
+def lhs(self,args):
+    return args[0]
+
+def rhs(self,args):
+    v = args[0]
+    return v
+
+@
+Atoms and expressions
+---------------------
+
+<<Atoms to expressions>>=
+def atom(self,args):
+    # Pick up built-in literals
+    v = args[0]
+    if v.lower() == 'twopi':
+        return "2.0*math.pi"
+    elif v.lower() == 'pi':
+        return "math.pi"
+    if hasattr(v,'type') and v.type == 'ID':
+        # remove initial underscores
+        if v[0] == '_':
+            v = v[1:]
+    return v
+
+def real(self,args):
+    return args[0]+"."+args[1]
+
+def literal(self,args):
+    return _concat(args)
+
+def enclosure(self,args):
+    return _concat(args)
+
+def arith(self,args):
+    return _concat(args)
+
+def power(self,args):
+    return _concat(args)
+
+def factor(self,args):
+    return _concat(args)
+
+def term(self,args):
+    if len(args)>1 and args[1]=="^":
+        print("Warning: cross product not implemented")
+    return _concat(args)
+
+@
+
+Subscriptions. Element references of form primary [ subscript ].  A
+subscription may be a simple element lookup, as in a[1]; it may be
+a keyed lookup of a different category using the value within the
+square brackets e.g. p[m.symop]; it may use multiple keys and use
+a dotted list of key values; or it may be a slicing. If it is a
+slicing, it is not applicable to category objects.
+
+As category objects can only be used in 'with' or 'loop' statements,
+if we find the primary is something that we are looping or withing, we
+immediately adopt the keyed lookup.  It is also possible for a delayed
+attribute lookup to occur, for example, a = atom_site[label] and later
+b = a.position, so we catch any subscriptions applied to loop category
+names.
+
+We convert list-valued subscriptions to a sequence of Python
+subscriptions in order to catch the valid numpy a[1,2,1...] style
+multi-dimensional array access.
+
+In all other cases we have a plain subscription as for normal Python.  
+
+<<Subscriptions>>=
+#TODO: dREL-specific behaviour
+def subscription(self,args):
+    if args[1].type == 'dotlist':
+        print("No idea how to handle a dotlist")
+    else:
+        return args[0]+"["+args[1]+"]"
+    
+@ Attribute references.  We need to catch all attribute references to
+special variables (those defined by loop or with statements).  For
+``with'' variables, we create a dummy variable for every attribute
+reference, keyed by the actual dataname looked up via the (cat,obj)
+tuple.  We store the order that it appears in the function call that
+is created, so that we can include the function within a 'map'
+statement and give the correct order of items.  Additionally, if the
+variable appears inside an IF statement, evaluation may be optional,
+so a flag is set (True means optional). So the withtable has syntax
+{``dataname'':(dummyname,dummyorder,optional = True/False)}.
+
+Furthermore, the square bracket syntax for keyed access to data packets requires
+that the result of the keyed access is accessed by attribute.  While dREL does not
+require the full dataname, PyCIFRW does, so we have to store the category that
+the keyed access comes from and add that back in - this is what 'sub_subject'
+contains.  Note also that this access can be delayed by assigning to the
+packet (e.g. a = atom_site[label]; b = a.xyz), so we check the list of
+such assignments kept in special_info[``packet_vars''].
+
+In a further twist, when keyed access followed directly by attribute
+lookup in a single primary is performed on an explicit category, that
+category should have an underscore prepended on the principle the
+final result will be a dataname.  So we need to check for this
+construction before deciding how to translate the 'primary' part of
+the construction to Python.
+
+Note also that we should not assume that a dataname is constructed as
+``_category.object''.  Rather, we should look up the correct form of
+the dataname using the provided dictionary.
+
+<<Attributes>>=
+def attributeref(self,args):
+    #TODO: all of the dREL-specific behaviour, guessing keys etc.
+    if args[0] == self.target_cat and args[1] == self.target_object:
+        return "_dreltarget"
+    else:
+        return args[0] + "." + args[1]
+
+@ Lists and tables
+    
+<<Lists and tables>>=
+def slicing(self,args):
+    return _concat(args)
+
+def proper_slice(self,args):
+    return args[0]
+
+def short_slice(self,args):
+    return _concat(args)
+
+def long_slice(self,args):
+    return _concat(args)
+
+def slice_list(self,args):
+    return _concat(args)
+
+def slice_item(self,args):
+    return args[0]
+
+def list_display(self,args):
+    return _concat(args)
+
+def expression_list(self,args):
+    return _concat(args) #comma is provided
+
+def parenth_form(self,args):
+    return _concat(args)
+
+def table_display(self,args):
+    return _concat(args)
+
+def table_contents(self,args):
+    return _concat(args)
+
+def table_entry(self,args):
+    return _concat(args)
+
+def expression(self,args):
+    return _concat(args)
+
+@
+Compound Statements
+===================
+
+<<Compound statements>>=
+def suite(self,args):
+    return _concat(self,args)
+
+def repeat_stmt(self,args):
+    os = "while True:" + add_indent("\n" + args[1])
+    return os
+
+def for_stmt(self,args):
+    outstring = "for " + args[1] + " in " + "copy(" + args[3] + "):"
+    outstring = outstring + add_indent("\n"+args[-1])
+    return outstring
+
+def do_stmt(self,args):
+    outstring = "for " + args[1] + "in range(" + args[3]
+    outstring = outstring + "," + args[4] + "+1"+","
+    if len(args)>7:  #increment
+        increment = args[7]
+    else:
+        increment = "1"
+    outstring = outstring + increment + add_indent("\n"+args[-1])
+    return outstring
+@ 
+Functions.
+
+<<Functions>>=
+def call(self,args):
+    return _concat(args)
+
+def funcdef(self,args):
+    left_part = _concat(args[1:])
+    return "def "+left_part
+
+def arglist(self,args):
+    return _concat(args)
+
+def one_arg(self,args):
+    return args[0]   #no type information needed in Python
+
+@ 
+Utility functions
+=================
+
+We do a lot of concatenation. If there is only one argument, we do
+not use the separator.
+
+<<Utility functions>>=
+def _concat(args,separator=""):
+    print("Concatenating %s" % repr(args))
+    if len(args)==1:
+        print("Returning %s" % args[0])
+        return args[0]
+    s = ""
+    for a in args:
+       if not isinstance(a,str):
+           print("Warning: %s is not string" % repr(a))
+           b = str(a)
+       else:
+           b = a
+       s = s + b + separator
+    print("Returning %s" % s)
+    return s
+
+def add_indent(some_text,n=4):
+    """Indent text by n spaces"""
+    return re.sub("\n","\n"+4*" ",text)
+

@@ -12,6 +12,9 @@ have been included that require approval from COMCIFS.  In particular:
 2. Subscriptions can now include lists of embedded assignments of the form ``.id = <value>``. This
    is part of an update to allow multi-key categories.
 
+3. Newlines are completely ignored via the whitespace production. This considerably simplifies
+   the grammar at the cost of not forcing authors to lay out statements on separate lines.
+
 The dREL grammar is designed to nudge dREL authors into prioritising readability of the code.
 Although there are several places where newlines would not introduce ambiguity, newlines are
 generally only allowed in places where they do not unduly split up phrases. So, for example,
@@ -74,18 +77,6 @@ Newlines may be placed around some mathematical operators to improve readability
     OCTINT = /0o[0-7]+/
     HEXINT = /0x[0-9A-Fa-f]+/
     BININT = /0b[0-1]+/
-
-The following productions place optional newlines near braces and around
-mathematical operators.  These could obviously be turned into regular
-expressions, but in the spirit of making as much as possible conformant with
-plain EBNF, they have been put in separate productions.::
-
-    lparen = LEFTPAREN {NEWLINE}
-    rparen = {NEWLINE} RIGHTPAREN
-    lsquare = LSQUAREB {NEWLINE}
-    rsquare = {NEWLINE} RSQUAREB
-    comma = COMMA {NEWLINE}
-    
 
 A real number must contain a decimal point, and may be
 optionally followed by an exponent after the letter "E". A digit before the
@@ -158,19 +149,19 @@ An atom is either a literal, an identifier, or an enclosure ::
 An enclosure is either a list, a table or a list of expressions enclosed in round brackets. ::
 
     enclosure = parenth_form | list_display | table_display ;
-    parenth_form = lparen expression_list rparen ;
+    parenth_form = LEFTPAREN expression_list RIGHTPAREN ;
 
-A list is formed by comma-delimited expressions inside square brackets, with
-optional NEWLINEs anywhere inside the brackets. Trailing commas are not allowed. ::
+A list is formed by COMMA-delimited expressions inside square brackets, with
+optional NEWLINEs anywhere inside the brackets. Trailing COMMAs are not allowed. ::
     
-    list_display = lsquare  expression_list rsquare ;
-    expression_list = expression | ( expression_list comma expression ) ;
+    list_display = LSQUAREB  expression_list RSQUAREB ;
+    expression_list = expression | ( expression_list COMMA expression ) ;
 
 A table is formed from a comma-delimited list of key:value pairs enclosed in braces. A
-trailing comma is not allowed. NEWLINEs are allowed outside the key:value pairs. ::
+trailing comma is not allowed. ::
     
-    table_display = "{" {NEWLINE}  table_contents {NEWLINE} "}" ;
-    table_contents = table_entry | (table_contents "," {NEWLINE}  table_entry ) ;
+    table_display = "{"  table_contents "}" ;
+    table_contents = table_entry | (table_contents "," table_entry ) ;
     table_entry = SHORTSTRING  ":"  expression ;
 
 Primaries
@@ -179,7 +170,7 @@ Primaries
 A primary is the most tightly bound expression: either an atom by itself, an
 attribute reference, a subscription, a slicing, or a function call. ::
 
-    primary = atom | attributeref | subscription | slicing | call ;
+    primary = atom | attributeref | subscription | call ;
 
 An attribute reference is created from a primary followed by a period and an
 identifier. In this case the identifier may include digits, so we make sure
@@ -188,10 +179,12 @@ the object part of the data name is the matrix element column+row.::
 
     attributeref = primary  "."  ( ID | INTEGER ) ;
 
-A subscription is formed from a primary followed by an expression or
-a series of dotted assignments in square brackets. ::
+A element reference is formed from a primary followed by a slice or a series of
+dotted assignments. If the primary is a category object and the explicit dotlist
+notation is not used, the value in the square brackets must be a single-element
+slice list (an expression) which is the value of the single key in this category.::
 
-    subscription = primary  "["  (dotlist | expression)  "]" ;
+    subscription = primary  "["  (proper_slice | slice_list | dotlist)  "]" ;
     dotlist = ("."  ID  "="  expression) | (dotlist  ","  "."  ID  "="  expression);
     
 A slice is primary followed by a series of up to three expressions separated by colons
@@ -200,7 +193,6 @@ colon appears inside the square brackets, it delimits the start and end coordina
 sliced object. When two colons appear (a `long_slice`) the final expression refers to
 the slice step. ::
 
-    slicing = primary  "["  (proper_slice | slice_list )  "]" ;
     proper_slice = short_slice | long_slice ;
     short_slice = ":" | (expression  ":"  expression) | (":"  expression) | (expression  ":") ;
     long_slice = short_slice  ":"  expression ;
@@ -214,7 +206,7 @@ in the list refers to a separate dimension of the sliced object.::
 A function call is an identifier followed by round brackets enclosing a list of arguments
 to the function. TODO: why does a NEWLINE before the final paren wreck the grammar?::
 
-    call = ID  lparen [expression_list] rparen ;
+    call = ID  LEFTPAREN [expression_list] RIGHTPAREN ;
 
 Operators
 ---------
@@ -231,7 +223,7 @@ A sign may optionally prefix a primary. ::
 
 Multiplication, division and cross product operations. ::
 
-    term = factor {  ("*"|"/"|"^") factor } ;
+    term = factor {  (MULT|DIV|CROSS) factor } ;
 
 Addition and subtraction. ::
 
@@ -270,30 +262,35 @@ production as that for an expression. ::
 Statements
 ----------
 
-Expressions by themselves yield values. In order to act on these values, statements
-are constructed from expressions and keywords.  Statements may be either simple,
-or compound. Simple statements do not contain
-other statements. A series of simple statements may be separated by NEWLINEs, and
-may also be separated by semicolons, but compound statements require no such
-separators. TODO - surely this can be cleaned up?::
+Expressions by themselves yield values. In order to act on these
+values, statements are constructed from expressions and keywords.
+Statements may be either simple, or compound. Simple statements do not
+contain other statements. A series of simple statements may be
+separated by semicolons for readability. ::
 
     statements = statement | (statements statement) ;
-    statement = (simple_statement  [";"]  { NEWLINE }) | compound_statement ;
-    simple_statement = small_statement | (simple_statement  ";"  small_statement) ;
+    statement = simple_statement | compound_statement ;
+    simple_statement = small_statement { ";"  small_statement } ;
 
 Simple statements include one-word statements and assignments, where
 assignment to multiple objects in a category using dotted lists is
-included. An expression list is also allowed, mostly so that
-side-effect functions can be called, although this is not recommended
-and may be deprecated. In the current core CIF this is used in a
-demonstration validation function that calls an 'Alert' function.
+included. Separate productions are provided for the left-hand and
+right-hand side of the assignment so that parsers based on this
+grammar can perform specialised operations depending on which side of
+the assignment they are located. An expression list is also allowed as
+a statement on its own, mostly so that side-effect functions can be
+called, although this is not recommended and may be deprecated. In the
+current core CIF this is used in a demonstration validation function
+that calls an 'Alert' function.
 
 A print statement is provided for debugging purposes only.The output
 of a print statement does not form part of the formal behaviour of a
 dREL method.::
 
     small_statement = expression_list | assignment | dotlist_assign | BREAK | NEXT | print_stmt;
-    assignment =  expression_list augop expression_list ;
+    assignment =  lhs augop rhs ;
+    lhs = expression_list ;
+    rhs = expression_list ;
 
 Dotted assignments are list of assignments to dotted identifiers, used for assigning to
 multiple columns of a category object at the same time, that is, using the same row. The
@@ -316,7 +313,7 @@ and function definition compound statements. ::
 Compound statements contain "suites" of statements. Where more than one statement
 is included in a block, the statements must be enclosed in braces. ::
 
-    suite = statement | "{" {NEWLINE} statements "}" {NEWLINE} ;
+    suite = statement | "{" statements "}" ;
     
 IF statements may contain multiple conditions separated by ELSEIF keywords, or a
 single alternative action using the ELSE keyword. ::
