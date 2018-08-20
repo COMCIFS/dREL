@@ -7,8 +7,8 @@ is named after a node in the parse tree, and takes the contents of the node as a
 argument.  The transformers in this file transform the parse tree into a piece of
 Python code assuming the following environment:
 
-1. The entire dREL method becomes a python function definition that takes as parameters
-   individual values of the data names from the category in which the definition appears.
+1. The entire dREL method becomes a python function definition that takes a CategoryObject
+   representing the category in which the definition appears.
    This allows the function to be 'mapped' onto the category if necessary.
 
 2. The outer function also takes a cif data block object with a specified interface.
@@ -20,10 +20,15 @@ The transformer methods may assume that any interior nodes have already been pro
 
 
 <<*>>=
-from lark import Transformer,UnexpectedInput
+from lark import Lark,Transformer,UnexpectedInput
+from CifFile import convert_type
+from CifFile.drel import drel_runtime
+from CifFile.StarFile import StarList
+import re
 
 <<Transformer class>>
 <<Helper classes>>
+<<Top level wrapper>>
 <<Utility functions>>
 
 @
@@ -37,119 +42,28 @@ class TreeToPy(Transformer):
     """Convert a Lark parse tree to Python code"""
     <<Initialise transformer>>
     <<Statements>>
+    <<Compound statements>>
     <<Atoms to expressions>>
     <<Lists and tables>>
     <<Subscriptions>>
     <<Attributes>>
     <<Functions>>
 
-@  Helper classes define objects that hold the data and have methods defined that allow
-the Python syntax to work.
-
-<<Helper classes>>=
-<<Category object>>
-<<A packet object>>
-
-@  `datablock` is a CifBlock object as defined in PyCIFRW. Given the dictionary and the
-category name we derive all the information we need to extract the correct row and column.
-The category object defines only the minimum necessary for access via square bracket and
-iteration.
-
-<<Category object>>=
-class CategoryObject(object):
-    def __init__(self,datablock,catname,cifdic):
-        self.__datablock = datablock
-        self.__catname = catname
-        self.__cifdic = cifdic
-        object_names = [a for a in cifdic.keys() if cifdic[a]['_name.category_id'] == catname]
-        self.__data_names = list([cifdic[a]['_definition.id'] for a in object_names])
-        self.__object_names = list([cifdic[a]['_name.object_id'] for a in self.__data_names])
-        self.__name_to_object = dict(zip(self.__data_names,self.__object_names))
-        self.__object_to_name = dict(zip(self.__object_names,self.__data_names))
-        self.__key_names = cifdic[catname].get('_category_key.name','')
-        self.__is_looped = cifdic[catname].get('_definition.class','Set') == 'Loop'
-        if self.__is_looped:
-            keylists = [datablock[k] for k in self.__key_names]
-            if len(self.__key_names)==1:
-                self.__key_index = list(keylists)[0]
-            else:
-                self.__key_index = list(zip(*keylists)) #order in tuple is same as key_names
-
-    def __getitem__(self,itemdict):
-        """getitem is passed a dictionary where the entries should
-        be the keys and the values are the requested values for
-        those keys. If only a single entry is provided and there
-        is only one key, there is no need for the key to be correct.
-        The result is a named tuple for which individual elements
-        can be accessed using 'dot'."""
-        if len(itemdict)==1 and len(self.__key_names)==1:
-            _,value = itemdict.popitem()
-            pack_no = self.__key_index.index(value)
-        else:
-            # convert object names to data names
-            index_vals = tuple([itemdict[self.__name_to_object[k]] for k in self.__key_names])
-            pack_no = self.__key_index.index(index_vals)
-        # create a function that returns the needed values
-        def get_packet_value(object_id):
-            dataname = self.__object_to_name[object_id]
-            return self.__datablock[dataname][pack_no]
-        return Packet(get_packet_value)
-
-    def __iter__(self):
-        """Iterate over all packets"""
-        # for efficiency
-        obj_names = list([self.__name_to_object[k] for k in self.__key_names])
-        for keyvals in self.__key_index:
-            if len(self.__key_names) == 1:
-                itemdict = {obj_names[0]:keyvals}
-            else:
-                itemdict = dict(zip(obj_names,keyvals))
-            yield self[itemdict]
-            
-    def __str__(self):
-        outdict = {"name":self.__catname}
-        outdict.update({"keys":str(self.__key_names)})
-        outdict.update({"objects":str(self.__object_names)})
-        outdict.update({"keylist":str(self.__key_index)})
-        return str(outdict)
-
-    def __getattr__(self,att):
-        """If unlooped this is OK"""
-        if not self.__is_looped:
-            db = self.__datablock
-            nmd = self.__object_to_name
-            return db[nmd[att]]
-        else:
-            raise(AttributeError)
-        
-@ The packet object
-The result of accessing an element of a category object is a packet object.
-A packet objects elements are accessed using ``.''. 
-
-<<A packet object>>=
-class Packet(object):
-    """An object mimicking a single row in a category, with objects accessed
-    by attribute"""
-    def __init__(self,access_function):
-        self.get_fun = access_function
-
-    def __getattribute__(self,attname):
-        return object.__getattribute__(self,'get_fun')(attname)
                  
 @ Initialisation.   We require a lot of contextual information:
 
-1. the definition in which this definition appears, in order to identify the return value
+1. the category/object in which this definition appears, in order to identify the return value
 2. the name we wish to give the function
-3. a table mapping dREL syntactic constructs to equivalent Python strings
 4. the relevant dictionary for type and key information.
 
 <<Initialise transformer>>=
-def __init__(self, target_cat, target_object,func_table, cifdic):
+def __init__(self, target_cat, target_object, func_name, cifdic,is_func=False):
     super().__init__()
-    self.func_names = func_table
+    self.func_name = func_name
     self.target_cat = target_cat
     self.target_object = target_object
     self.dic = cifdic
+    self.is_func = is_func
     <<Internal use variables>>
 
 @         
@@ -179,9 +93,11 @@ the alias to allow it to be picked up when the search for special ids
 is undertaken e.g. in the ATTRIBUTE case.
 
 <<Internal use variables>>=
-self.special_ids = [{}]   #special variable names
-self.loopable = {}     #categories that can be looped
-
+self.cat_ids = set([])   #categories mentioned in the method
+self.aug_assign_table = {"++=":"drel_runtime.aug_append",
+                    "+=":"drel_runtime.aug_add",
+                    "-=":"drel_runtime.aug_sub",
+                    "--=":"drel_runtime.aug_remove"}
 @ 
 dREL top level
 ==============
@@ -190,7 +106,14 @@ The final function body is output by concatenating the strings generated before,
 separated by newlines.::
 <<Statements>>=
 def input(self,args):
-    return _concat(args,"\n")
+    if self.is_func:
+        return args[0]
+    cat_string = ""
+    for c in self.cat_ids:
+        cat_string = cat_string + "%s = CategoryObject(__datablock,'%s',__dict)\n" % (c,c)
+    header_code = "def %s(__datablock,__dict,__packet):" % self.func_name
+    body = cat_string + args[0] + "\nreturn __dreltarget"
+    return header_code + add_indent("\n"+body)
 
 def statements(self,args):
     return _concat(args,"\n")
@@ -208,6 +131,9 @@ def small_statement(self,args):
 def assignment(self,args):
     if args[1] == "=":   #simple assignment
         return _concat(args)
+    else: #call runtime functions
+        operator = self.aug_assign_table[args[1]]
+        return "%s = %s(%s,%s)" % (args[0],operator,args[0],args[2])
 
 def augop(self,args):
     return args[0]
@@ -235,10 +161,20 @@ def atom(self,args):
         # remove initial underscores
         if v[0] == '_':
             v = v[1:]
+        # catch any category references
+        if v in self.dic.keys() and v != self.target_cat:
+            self.cat_ids.add(v)
+        if v == self.target_cat:
+            v = "__packet"
     return v
 
+# A real does not need to be followed by anything, so
+# make sure we catch this case
 def real(self,args):
-    return args[0]+"."+args[1]
+    if len(args)==1:
+        return args[0]+"."
+    else:
+        return args[0]+"."+args[1]
 
 def literal(self,args):
     return _concat(args)
@@ -260,6 +196,23 @@ def term(self,args):
         print("Warning: cross product not implemented")
     return _concat(args)
 
+def restricted_comp_operator(self,args):
+    return _concat(args," ")
+
+def comp_operator(self,args):
+    return _concat(args," ")
+
+def comparison(self,args):
+    return _concat(args," ")
+
+def not_test(self,args):
+    return _concat(args," ")
+
+def and_test(self,args):
+    return _concat(args," ")
+
+def or_test(self,args):
+    return _concat(args," ")
 @
 
 Subscriptions. Element references of form primary [ subscript ].  A
@@ -285,46 +238,28 @@ In all other cases we have a plain subscription as for normal Python.
 <<Subscriptions>>=
 #TODO: dREL-specific behaviour
 def subscription(self,args):
-    if args[1].type == 'dotlist':
-        print("No idea how to handle a dotlist")
-    else:
-        return args[0]+"["+args[1]+"]"
+    return args[0]+"["+args[1]+"]"
+
+def dotlist_element(self,args):
+    return args[1]+":"+args[3]
+
+def dotlist(self,args):
+    return "{" + _concat(args,",")+"}"
+
+@ Attribute references.
     
-@ Attribute references.  We need to catch all attribute references to
-special variables (those defined by loop or with statements).  For
-``with'' variables, we create a dummy variable for every attribute
-reference, keyed by the actual dataname looked up via the (cat,obj)
-tuple.  We store the order that it appears in the function call that
-is created, so that we can include the function within a 'map'
-statement and give the correct order of items.  Additionally, if the
-variable appears inside an IF statement, evaluation may be optional,
-so a flag is set (True means optional). So the withtable has syntax
-{``dataname'':(dummyname,dummyorder,optional = True/False)}.
-
-Furthermore, the square bracket syntax for keyed access to data packets requires
-that the result of the keyed access is accessed by attribute.  While dREL does not
-require the full dataname, PyCIFRW does, so we have to store the category that
-the keyed access comes from and add that back in - this is what 'sub_subject'
-contains.  Note also that this access can be delayed by assigning to the
-packet (e.g. a = atom_site[label]; b = a.xyz), so we check the list of
-such assignments kept in special_info[``packet_vars''].
-
-In a further twist, when keyed access followed directly by attribute
-lookup in a single primary is performed on an explicit category, that
-category should have an underscore prepended on the principle the
-final result will be a dataname.  So we need to check for this
-construction before deciding how to translate the 'primary' part of
-the construction to Python.
-
-Note also that we should not assume that a dataname is constructed as
+Note that we should not assume that a dataname is constructed as
 ``_category.object''.  Rather, we should look up the correct form of
-the dataname using the provided dictionary.
+the dataname using the provided dictionary. Our match on 'atom' will
+already have substituted in the string '__packet' if we are referencing
+an item in the target category, so we check for this in order to catch
+the particular data name that is the one we are calculating.
 
 <<Attributes>>=
 def attributeref(self,args):
     #TODO: all of the dREL-specific behaviour, guessing keys etc.
-    if args[0] == self.target_cat and args[1] == self.target_object:
-        return "_dreltarget"
+    if args[0] == '__packet' and args[1] == self.target_object:
+        return "__dreltarget"
     else:
         return args[0] + "." + args[1]
 
@@ -376,7 +311,10 @@ Compound Statements
 
 <<Compound statements>>=
 def suite(self,args):
-    return _concat(self,args)
+    return _concat(args)
+
+def compound_statement(self,args):
+    return args[0]
 
 def repeat_stmt(self,args):
     os = "while True:" + add_indent("\n" + args[1])
@@ -396,22 +334,244 @@ def do_stmt(self,args):
         increment = "1"
     outstring = outstring + increment + add_indent("\n"+args[-1])
     return outstring
+
+def loop_stmt(self,args):
+    # TODO: the fancy stuff
+    start = "for %s in CategoryObject(__datablock,'%s',__dict):" % (args[1],args[3])
+    return start + add_indent("\n"+args[-1])
+
+def with_stmt(self,args):
+    if args[3] == self.target_cat:
+        withstr = "%s = __packet" % args[1]
+        withstr = withstr + "\n" + args[-1]
+    else:
+        raise(ValueError,"Only current category can be aliased with 'WITH': given %s, expected %s" %
+              args[3],self.target_cat)
+
+# An if stmt may have 'elseif' as the second argument.
+def if_stmt(self,args):
+    if args[1].lower() == 'elseif':
+        ifstr = args[0] + '\nelseif'
+    else:
+        ifstr = 'if '
+    ifstr += args[-2] + ":"+add_indent("\n"+args[-1])
+    return ifstr
 @ 
-Functions.
+Functions.  A function call may invoke a built-in function, so we have
+to convert these to know python functions.
 
 <<Functions>>=
 def call(self,args):
-    return _concat(args)
+    before,middle,after = get_function_name(args[0])
+    fstr = before + "(" + middle + args[2] + ")" + after
+    return fstr
 
 def funcdef(self,args):
-    left_part = _concat(args[1:])
-    return "def "+left_part
+    fstr = "def "+args[1]+"("+args[2]+")"+":"
+    fstr += add_indent("\n"+args[-1]+"\nreturn %s" % args[1])
+    return fstr
 
 def arglist(self,args):
     return _concat(args)
 
 def one_arg(self,args):
     return args[0]   #no type information needed in Python
+
+
+
+@
+Top level wrapper
+-----------------
+
+This wrapper shows how the code body can be used.
+
+<<Top level wrapper>>=
+def transform_drel(drel_code,parser,transformer):
+    tree = parser.parse(drel_code)
+    naked_func = transformer.transform(tree)
+    print(test_code)
+
+              
+@  Helper classes define objects that hold the data and have methods defined that allow
+the Python syntax to work.
+
+<<Helper classes>>=
+<<Category object>>
+<<A packet object>>
+<<A data wrapper>>
+
+@  `datablock` is a CifBlock object as defined in PyCIFRW. Given the dictionary and the
+category name we derive all the information we need to extract the correct row and column.
+The category object defines only the minimum necessary for access via square bracket and
+iteration.
+
+<<Category object>>=
+class CategoryObject(object):
+    def __init__(self,datablock,catname,cifdic):
+        self.__datablock = datablock
+        self.__catname = catname
+        self.__cifdic = cifdic
+        object_names = [a for a in cifdic.keys() if cifdic[a]['_name.category_id'] == catname]
+        self.__data_names = list([cifdic[a]['_definition.id'] for a in object_names])
+        self.__object_names = list([cifdic[a]['_name.object_id'] for a in self.__data_names])
+        self.__name_to_object = dict(zip(self.__data_names,self.__object_names))
+        self.__object_to_name = dict(zip(self.__object_names,self.__data_names))
+        self.__key_names = cifdic[catname].get('_category_key.name',[])
+        self.__is_looped = cifdic[catname].get('_definition.class','Set') == 'Loop'
+        if self.__is_looped:
+            keylists = [datablock[k] for k in self.__key_names]
+            if len(self.__key_names)==1:
+                self.__key_index = list(keylists)[0]
+            else:
+                self.__key_index = list(zip(*keylists)) #order in tuple is same as key_names
+
+    def __getitem__(self,itemdict):
+        """getitem is passed a dictionary where the entries should
+        be the keys and the values are the requested values for
+        those keys. If only a single entry is provided and there
+        is only one key, there is no need for the key to be correct.
+        The result is a named tuple for which individual elements
+        can be accessed using 'dot'."""
+        if not self.__is_looped:
+            def get_packet_value(object_id):
+                dataname = self.__object_to_name[object_id]
+                return self.__datablock[dataname]
+        else:
+          if len(itemdict)==1 and len(self.__key_names)==1:
+            _,value = itemdict.popitem()
+            pack_no = self.__key_index.index(value)
+          else:
+            # convert object names to data names
+            index_vals = tuple([itemdict[self.__name_to_object[k]] for k in self.__key_names])
+            pack_no = self.__key_index.index(index_vals)
+          # create a function that returns the needed values
+          def get_packet_value(object_id):
+            dataname = self.__object_to_name[object_id]
+            return self.__datablock[dataname][pack_no]
+        return Packet(get_packet_value)
+
+    def __iter__(self):
+        """Iterate over all packets"""
+        if not self.__is_looped:
+            yield self['dummy']
+            raise(StopIteration)
+        # for efficiency
+        obj_names = list([self.__name_to_object[k] for k in self.__key_names])
+        for keyvals in self.__key_index:
+            if len(self.__key_names) == 1:
+                itemdict = {obj_names[0]:keyvals}
+            else:
+                itemdict = dict(zip(obj_names,keyvals))
+            yield self[itemdict]
+            
+    def __str__(self):
+        outdict = {"name":self.__catname}
+        outdict.update({"keys":str(self.__key_names)})
+        outdict.update({"objects":str(self.__object_names)})
+        outdict.update({"keylist":str(self.__key_index)})
+        return str(outdict)
+
+    def __getattr__(self,att):
+        """If unlooped this is OK"""
+        if not self.__is_looped:
+            db = self.__datablock
+            nmd = self.__object_to_name
+            return db[nmd[att]]
+        else:
+            raise(AttributeError)
+        
+@ The packet object
+The result of accessing an element of a category object is a packet object.
+A packet objects elements are accessed using ``.''. 
+
+<<A packet object>>=
+class Packet(object):
+    """An object mimicking a single row in a category, with objects accessed
+    by attribute"""
+    def __init__(self,access_function):
+        self.get_fun = access_function
+
+    def __getattribute__(self,attname):
+        return object.__getattribute__(self,'get_fun')(attname)
+
+
+@ A data wrapper
+
+We wish any unfulfilled data accesses to call the appropriate dictionary method. This
+example replaces the PyCIFRW functionality in order to use the dREL method derived
+here.
+
+<<A data wrapper>>=
+class ExecBlock(object):
+    def __init__(self,datablock,cifdic,grammar_file):
+        self.datablock = datablock
+        self.dic = cifdic
+        self.parser = Lark(open(grammar_file).read(),start="input",
+                           parser="lalr",lexer="contextual")
+        self.cache = {}  #store already done
+        self.use_drel = False
+
+    def switch_drel(self):
+        self.use_drel = not self.use_drel
+        
+    def __getitem__(self,itemname):
+        if not self.use_drel:
+            return self.datablock[itemname]
+        try:
+            result = self.datablock[itemname]
+            result = self.change_type(itemname,result)
+            return result
+        except KeyError:
+            if itemname.lower() in self.cache:
+                return self.cache[itemname.lower()]
+            if itemname not in self.dic:
+                raise KeyError
+        method = self.dic[itemname].get('_method.expression','')
+        if len(method) == 0:
+            raise KeyError
+        method = method[0]   #will fail for multiple methods
+        target_cat = self.dic[itemname]['_name.category_id']
+        target_obj = self.dic[itemname]['_name.object_id']
+        transformer = TreeToPy(target_cat,target_obj,"myfunc",self.dic)
+        drel = transformer.transform(self.parser.parse(method))
+        print(drel)
+        exec(drel,globals())
+        master_cat = CategoryObject(self,target_cat,self.dic)
+        result = list([myfunc(self,self.dic,p) for p in master_cat])
+        if self.dic[target_cat].get('_definition.class','Set')=='Set':
+            assert len(result)==1
+            result = result[0]
+        self.cache[itemname.lower()]=result
+        return result
+    
+    <<Convert string to appropriate type>>
+    
+@ (Adapted from PyCIFRW)
+
+This function converts the string-valued items returned from the parser into
+types that correspond to the dictionary specifications.  For DDLm it must also
+deal with potentially complex structures containing both strings and numbers. We
+have tried to avoid introducing a dependence on Numpy in general for PyCIFRW,
+but once we get into the realm of DDLm we require Numpy arrays in order to
+handle the various processing tasks.  This routine is the one that will
+create the arrays from the StarList types, so needs access to numpy.  However,
+this routine is only called if a DDLm dictionary has been provided, so we
+should still have no Numpy dependence for non DDLm cases
+
+For safety, we check that our object is really string-valued.  In practice,
+this means that it is either a string, a list of strings, or a list of
+StarLists as these are the only datastructures that an as-parsed file will
+contain.
+
+<<Convert string to appropriate type>>=
+def change_type(self,itemname,inval):
+    if inval == "?": return inval
+    change_function = convert_type(self.dic[itemname])
+    if isinstance(inval,list) and not isinstance(inval,StarList):   #from a loop
+        newval = list([change_function(a) for a in inval])
+    else:
+        newval = change_function(inval)
+    return newval
 
 @ 
 Utility functions
@@ -439,5 +599,85 @@ def _concat(args,separator=""):
 
 def add_indent(some_text,n=4):
     """Indent text by n spaces"""
-    return re.sub("\n","\n"+4*" ",text)
+    return re.sub("\n","\n"+4*" ",some_text)
+
+<<Function transformer>>
+<<Mathematical operations>>
+
+@ We call out to this function
+in order to find out what the Python name of the given function is.  Where we have
+to provide our own function, that is also listed.  Note that this only works for
+unary functions.
+
+We force all matrices to be 64-bit floats.  If you check SeitzFromJones, you will
+find a matrix that defaults to integer type, meaning that any assignments of float
+values are rounded, thus the need for explicitly working with floats.
+
+<<Function transformer>>=
+def get_function_name(in_name):
+    """Return the Python name of the dREL function, an argument prefix,
+       and anything to be appended to the end"""
+    builtins = {"table":"dict",
+                "list":"list",
+                "array":"numpy.array",
+                "len":"len",
+                "abs":"abs",
+                "magn":"abs",
+                "atoi":"int",
+                "float":"float",
+                "str":"str",
+                "array":"numpy.array",
+                "norm":"numpy.linalg.norm",
+                "sqrt":"math.sqrt",
+                "exp":"math.exp",
+                "complex":"complex",
+                "max":"max",
+                "min":"min",
+                "strip":"drel_runtime.drel_strip",
+                "int":"drel_runtime.drel_int",
+                "eigen":"drel_runtime.drel_eigen",
+                "hash":"hash"  #dREL extension
+    }
+    test_name = in_name.lower()
+    target_name = builtins.get(test_name,None)
+    if target_name is not None:
+        return target_name,"",""
+    if test_name in ['sind','cosd','tand']:
+        return "math."+test_name[:-1],"math.radians(",")"
+    if test_name in ['acosd','asind','atand','atan2d']:
+        return "math.degrees(math."+test_name[:-1],"",")"
+    if test_name == "mod":
+        return "divmod","","[1]"
+    if test_name == "upper":
+        return "","",".upper()"
+    if test_name == "transpose":
+        return "","",".T"
+    if test_name == 'expimag':
+        return "cmath.exp","1j*(",")"
+    if test_name in ['real','imag']:
+        return "","","." + test_name
+    if test_name == 'matrix':
+        return "numpy.matrix","",".astype('float64')"
+    if test_name == 'sort':
+        return "","",".sort()"
+    return in_name,"",""   #dictionary defined
+
+@  Mathematical operations in dREL are complicated by the need to handle matrix
+operations transparently.  The two operators that are affected are "^" (cross
+product) and "*" (matrix multiplication).
+
+<<Mathematical operations>>=
+def fix_mathops(op,first_arg,second_arg):
+    """Return a string that will carry out the requested operation"""
+    if op == "^":
+        return "numpy.cross(%s,%s)" % (first_arg,second_arg)
+    elif op == "*":  #could be matrix multiplication
+        return "drel_runtime.drel_dot(%s,%s)" % (first_arg,second_arg)
+    elif op == "+":
+        return "drel_runtime.drel_add(%s,%s)" % (first_arg, second_arg)
+    elif op == "-":
+        return "numpy.subtract(%s,%s)" % (first_arg, second_arg)
+    # beware integer division on this one...
+    elif op == "/":
+        return "numpy.true_divide(%s,%s)" % (first_arg, second_arg)
 

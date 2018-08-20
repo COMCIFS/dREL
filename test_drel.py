@@ -5,8 +5,8 @@
 import pytest
 from lark import Lark
 from CifFile import CifDic, CifFile
-from py_transformer import TreeToPy, CategoryObject, Packet
-import re
+from py_transformer import TreeToPy, CategoryObject, Packet, ExecBlock
+import re,math
 
 # Constants
 grammar_file = "lark_grammar.ebnf"
@@ -48,7 +48,7 @@ def lark_grammar(request,scope="module"):
 @pytest.fixture
 def load_cifdic(request,scope="module"):
     cifdic = getattr(request.module,"dic_file")
-    return CifDic(cifdic,do_minimum=True)
+    return CifDic(cifdic,do_imports='Contents',do_dREL=False)
 
 @pytest.fixture
 def drel_methods(request,scope="module"):
@@ -56,6 +56,19 @@ def drel_methods(request,scope="module"):
     has_meth = list([n for n in p.keys() if '_method.expression' in p[n]])
     has_meth.sort()
     return [(n,p[n]['_method.expression']) for n in has_meth]
+
+@pytest.fixture
+def prep_methods(request,scope="module"):
+    meths = drel_methods(request,scope)
+    for mn,(name,one_m) in enumerate(drel_methods):
+        for n,om in enumerate(one_m):   #multiple methods possible
+            print("=== %s(%d) ===" % (name,mn))
+            print(om)
+            tokens = lark_grammar.lex(om+"\n")
+            #for t in tokens:
+            #    print(repr(t))
+            tree = lark_grammar.parse(om+"\n")
+            #print(tree.pretty())
 
 @pytest.fixture
 def pytransformer(request,scope="module"):
@@ -67,6 +80,13 @@ def getdata(request,scope="module"):
     d = CifFile("nick1.cif",grammar="STAR2")
     return d.first_block()
 
+@pytest.fixture
+def getexecdata(request):
+    d = CifFile("nick1.cif",grammar="STAR2")
+    dic = load_cifdic(request,scope="module")
+    grammar_file = getattr(request.module,"grammar_file")
+    return ExecBlock(d.first_block(),dic,grammar_file)
+        
 def process_a_phrase(phrase,parser,transformer=None):
     print("========")
     print(phrase)
@@ -77,21 +97,19 @@ def process_a_phrase(phrase,parser,transformer=None):
     tree = parser.parse(phrase,debug=False)
     print(tree.pretty())
     if transformer is not None:
-        return transformer.transform(tree)
+        return transformer.transform(tree),transformer
     
 def handle_a_phrase(*args,**kwargs):
-    x = process_a_phrase(*args,**kwargs)
+    x,t = process_a_phrase(*args,**kwargs)
     print(x)
-    return x
+    return x,t
     
-def execute_a_phrase(phrase,parser,transformer):
+def execute_a_phrase(phrase,parser,transformer,data):
     """Execute the provided phrase and return the result"""
-    x = handle_a_phrase(phrase,parser,transformer)
-    test_code = "def myfunc():\n    " + re.sub(r"\n","\n    ",x)
-    test_code = test_code + "\n"+4*' '+"return _dreltarget"
-    print(test_code)
-    exec(test_code,globals())
-    p = myfunc()
+    x,t = handle_a_phrase(phrase,parser,transformer)
+    exec(x,globals())
+    catobj = CategoryObject(data,transformer.target_cat,transformer.dic)
+    p = [myfunc(data,transformer.dic,p) for p in catobj]
     return p
 
 class TestGrammar(object):
@@ -117,10 +135,36 @@ class TestGrammar(object):
         """Test that a small statement after an IF statement is
         considered to be a suite"""
         handle_a_phrase(frag_collection["call_suite"],lark_grammar)
-
+        
     def test_subs(self,lark_grammar,pytransformer):
         handle_a_phrase("c[0]",lark_grammar,pytransformer)
 
+class TestGrammarWithDic(object):
+    """Test methods that require knowledge of the dictionary"""
+    def py_t_dic(self,cat,obj,cifdic):
+        """A transformer with dictionary knowledge"""
+        tt = TreeToPy(cat,obj,{},cifdic)
+        return tt
+                  
+    def test_ids(self,lark_grammar,load_cifdic):
+        """Test that we can collect identifiers"""
+        phrase = """
+        _exptl_crystal.density_diffrn = 1.6605 * _cell.atomic_mass / _cell.volume
+        """
+        pt = self.py_t_dic('return','val',load_cifdic)
+        _,t = handle_a_phrase(phrase,lark_grammar,pt)
+        assert 'cell' in t.cat_ids
+        assert 'exptl_crystal' in t.cat_ids
+
+    def test_funcs(self,lark_grammar,load_cifdic):
+        """Test that a function is defined correctly"""
+        func_text = load_cifdic['_function.AtomType']
+        func_text = func_text['_method.expression'][0]
+        pt = TreeToPy('','','',load_cifdic,True)
+        x,_ = handle_a_phrase(func_text,lark_grammar,pt)
+        exec(x,globals())
+        assert AtomType('Fe3+') == 'Fe'
+        
 class TestHelpers(object):
     """Test extra objects"""
     def test_catobj(self,load_cifdic,getdata):
@@ -132,6 +176,11 @@ class TestHelpers(object):
         c = CategoryObject(getdata,"atom_site",load_cifdic)
         vals = set([c.fract_y for c in c])
         assert set(getdata['_atom_site.fract_y']) == vals
+
+    def test_set_iteration(self,load_cifdic,getdata):
+        c = CategoryObject(getdata,"cell",load_cifdic)
+        vals = [c.volume for c in c]
+        assert vals == ['635.3(11)']
         
     def test_packet(self,load_cifdic,getdata):
         af = lambda s:s
@@ -157,8 +206,27 @@ class TestHelpers(object):
         c = CategoryObject(getdata,"cell",load_cifdic)
         assert c.angle_beta == '90.8331(5)'
 
-class DicTests(object):
-    def test_dic_entries(drel_methods,lark_grammar):
+class TestExecBlock(object):
+    def test_set_calcs(self,getexecdata):
+        """Test that we can perform single-packet calculations"""
+        olddata = getexecdata['_exptl_crystal.density_diffrn']
+        del getexecdata.datablock['_exptl_crystal.density_diffrn']
+        getexecdata.switch_drel()
+        r = getexecdata['_exptl_crystal.density_diffrn']
+        assert abs(r - float(olddata)) < 0.0001
+
+    def test_loop_calcs(self,getexecdata):
+        """Test that we can perform multi-packet calculations"""
+        olddata = getexecdata['_atom_type.number_in_cell']
+        del getexecdata.datablock['_atom_type.number_in_cell']
+        getexecdata.switch_drel()
+        r = getexecdata['_atom_type.number_in_cell']
+        print(r)
+        assert False
+ 
+class TestFullDic(object):
+    """Test that we can parse a full dictionary"""
+    def test_dic_entries(self,drel_methods,lark_grammar):
         for mn,(name,one_m) in enumerate(drel_methods):
             for n,om in enumerate(one_m):   #multiple methods possible
                 print("=== %s(%d) ===" % (name,mn))

@@ -185,7 +185,8 @@ notation is not used, the value in the square brackets must be a single-element
 slice list (an expression) which is the value of the single key in this category.::
 
     subscription = primary  "["  (proper_slice | slice_list | dotlist)  "]" ;
-    dotlist = ("."  ID  "="  expression) | (dotlist  ","  "."  ID  "="  expression);
+    dotlist =  dotlist_element {"," dotlist_element } ;
+    dotlist_element = ("."  ID  "="  expression)
     
 A slice is primary followed by a series of up to three expressions separated by colons
 and/or commas inside square brackets.  The expressions should evaluate to integers. When one
@@ -194,13 +195,13 @@ sliced object. When two colons appear (a `long_slice`) the final expression refe
 the slice step. ::
 
     proper_slice = short_slice | long_slice ;
-    short_slice = ":" | (expression  ":"  expression) | (":"  expression) | (expression  ":") ;
-    long_slice = short_slice  ":"  expression ;
+    short_slice = COLON | (expression  COLON  expression) | (COLON expression) | (expression  COLON) ;
+    long_slice = short_slice  COLON  expression ;
 
 `slice_lists` are composed of expressions and slices, where each entry
 in the list refers to a separate dimension of the sliced object.::
 
-    slice_list = slice_item | (slice_list  ","  slice_item) ;
+    slice_list = slice_item | (slice_list  COMMA  slice_item) ;
     slice_item = expression | proper_slice ;
     
 A function call is an identifier followed by round brackets enclosing a list of arguments
@@ -233,7 +234,7 @@ We split the definition of comparison operators into two sets here so that
 we can use a subset of comparison operations in compound statements
 to test loops. ::
 
-    restricted_comp_operator = "<" | ">" | GTE | LTE | NEQ | ISEQUAL ;
+    restricted_comp_operator = GT | LT | GTE | LTE | NEQ | ISEQUAL ;
 
 The full set of comparison operators. ::
 
@@ -319,7 +320,7 @@ IF statements may contain multiple conditions separated by ELSEIF keywords, or a
 single alternative action using the ELSE keyword. ::
 
     if_else_stmt = if_stmt  ELSE  suite ;
-    if_stmt = ([if_stmt  ELSEIF] | IF)  "("  expression  ")"  {NEWLINE} suite ;
+    if_stmt = ([if_stmt  ELSEIF] | IF)  "("  expression  ")" suite ;
 
 For statements perform simple loops over the items in `expression_list`, assigning
 them in turn to the items in `id_list`. `id_list` can be optionally enclosed in
