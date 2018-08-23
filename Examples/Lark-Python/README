@@ -1,0 +1,45 @@
+This directory contains a demonstration of how the annotated
+EBNF can be used to create a parser and convert dREL to Python
+code.  It has been developed and tested on Linux only, but
+contains no obviously platform-dependent code.
+
+To make and run the example tests you should have installed:
+
+(1) Notangle (to convert literate web files to python)
+(2) Python3
+(3) pytest (Python3 version) for executing the tests
+(4) grep (for quickly extracting grammar specifications from the
+    annotated file)
+(5) make (for automatically running the conversion)
+(6) The core CIF dictionary containing dREL methods.  The COMCIFS/cif_core
+    repository contains cif_core.dic
+(7) PyCIFRW for handling CIF data files.
+(8) Lark for processing EBNF grammars.
+
+Preparing:
+
+1. Type 'make'
+2. Edit 'test_drel.py' and change 'dic_file' to point to
+the location of the core CIF dictionary.
+
+Running:
+
+1. Type "pytest -k '<test name>' " to run <test name> from
+file 'test_drel.py'.
+
+Learning:
+
+Examine the test fixtures in test_drel.py. In particular:
+
+Function "getexecdata" creates an object that will
+automatically calculate missing data when asked: for
+example, `getexecdata['_cell.volume']` will calculate
+cell volume if it is missing from the data file.
+
+Function `process_a_phrase` takes a dREL fragment and
+converts it to python.
+
+Function `execute_a_phrase` takes a dREL fragment,
+converts it to python, executes it and then executes 
+the newly-defined function that was contained in the dREL
+fragment.
