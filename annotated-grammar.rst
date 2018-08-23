@@ -1,47 +1,41 @@
 A DRAFT annotated grammar for dREL
 ====================================
 
-The following grammar is based on the dREL publication combined with
+The following grammar is based on the dREL publication (Spadaccini, N., Castleden,
+I. R., du Boulay, D. and Hall, S. R.,"dREL: A relational expression language
+   for dictionary methods",  _J. Chem. Inf. Model._, 2012, **52** (8) pp 1917-1925.
+   https://dx.doi.org/10.1021/ci300076w ),  combined with
 the dREL examples found in the core CIF dictionary.  A few changes
-have been included that require approval from COMCIFS.  In particular:
+have been included that may require approval from COMCIFS.  In particular:
 
 1. Leading underscores in front of identifiers are no longer significant. This
    is justified on the grounds that there is no useful semantic difference between
    ``_category.object`` and ``category.object``
 
 2. Subscriptions can now include lists of embedded assignments of the form ``.id = <value>``. This
-   is part of an update to allow multi-key categories.
+   allows rows in multi-key categories to be referenced.
 
-3. Newlines are completely ignored via the whitespace production. This considerably simplifies
-   the grammar at the cost of not forcing authors to lay out statements on separate lines.
-
-The dREL grammar is designed to nudge dREL authors into prioritising readability of the code.
-Although there are several places where newlines would not introduce ambiguity, newlines are
-generally only allowed in places where they do not unduly split up phrases. So, for example,
-newlines are acceptable immediately after opening brackets and before closing brackets, but
-are not acceptable at other points in expressions.
+3. Newlines are completely ignored. Certain readings of the original
+   paper suggest that this was not the original intention, but the
+   language presented in the paper does not need newlines in order to
+   remove ambiguity.
 
 The EBNF used here differs from the ISO standard as follows:
 
-1. Sequences of characters may be denoted by strings
+1. Sequences of characters may be presented as single strings
 2. The expression separator is a space, not a comma
 3. Character ranges may be included in tokens to save space
 4. Regular expressions are used to create tokens.
 
 Postprocessing of this file changes '=' to ':' in productions and
 removes trailing semicolons in order to be processed through the Lark parser.
-
-TODO: include whitespace.  Whitespace in only significant where it is necessary
-to disambiguate productions.
     
 Tokens
 ------
 
-These are the productions for all capitalised items above. Note that keywords are
-case-insensitive, but this has been left out of the productions below for brevity.
-Newlines may be placed around some mathematical operators to improve readability. ::
+Expressions appearing between forward slashes are regular expressions. The
+assumption in the grammar is that the longest matching token is the one selected. ::
 
-    NEWLINE = /[\r\n]+/
     ISEQUAL = "=="
     PWR = "**"
     NEQ = "!="
@@ -78,6 +72,12 @@ Newlines may be placed around some mathematical operators to improve readability
     HEXINT = /0x[0-9A-Fa-f]+/
     BININT = /0b[0-1]+/
 
+
+For convenience all assignment operations are grouped into a single production. ::
+    
+    augop = APPEND | AUGADD | AUGMIN | AUGDROP | AUGMUL | EQUALS ; 
+    
+
 A real number must contain a decimal point, and may be
 optionally followed by an exponent after the letter "E". A digit before the
 decimal point is not required. However, this means that the category-object
@@ -97,7 +97,8 @@ may contain NEWLINE. TODO: check that backslashes work properly.::
     LONGSTRING = /'''[^\\][.\n]*'''|"""[^\\][.\n]*"""/
     SHORTSTRING = /'[^']*'|"[^"]*"/
 
-Keywords. These are case insensitive, but this is ignored below.::
+Keywords. These are case insensitive, but for brevity this has not been
+made explicit.::
 
     AND = "and"
     OR = "or"
@@ -128,15 +129,18 @@ Comments begin with a hash and continue to the end of the line. ::
     COMMENT = /#.*/
     %ignore COMMENT
 
-Whitespace is not often significant. ::
+Whitespace is not significant. ::
 
     WHITESPACE = /[ \t\r\n]+/
     %ignore WHITESPACE
 
+The following grammar productions are roughly organised from most granular to the
+top level. A complete dREL fragment is built from atoms, which become primaries that
+appear in expressions which are structured into statements.
     
 Literals
 --------
-Literals are either identifiers, string literals or numbers ::
+Literals are either string literals or numbers ::
 
     literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | real | imaginary ;
     
@@ -152,14 +156,13 @@ An enclosure is either a list, a table or a list of expressions enclosed in roun
     enclosure = parenth_form | list_display | table_display ;
     parenth_form = LEFTPAREN expression_list RIGHTPAREN ;
 
-A list is formed by COMMA-delimited expressions inside square brackets, with
-optional NEWLINEs anywhere inside the brackets. Trailing COMMAs are not allowed. ::
+A list is formed by comma-delimited expressions inside square brackets. ::
     
     list_display = LSQUAREB  expression_list RSQUAREB ;
     expression_list = expression | ( expression_list COMMA expression ) ;
 
-A table is formed from a comma-delimited list of key:value pairs enclosed in braces. A
-trailing comma is not allowed. ::
+A table is formed from a comma-delimited list of key:value pairs enclosed in braces.
+The key of a table may not span a line. ::
     
     table_display = "{"  table_contents "}" ;
     table_contents = table_entry | (table_contents "," table_entry ) ;
@@ -169,21 +172,27 @@ Primaries
 ---------
 
 A primary is the most tightly bound expression: either an atom by itself, an
-attribute reference, a subscription, a slicing, or a function call. ::
+attribute reference, a subscription, or a function call. ::
 
     primary = atom | attributeref | subscription | call ;
 
-An attribute reference is created from a primary followed by a period and an
-identifier. In this case the identifier may include digits, so we make sure
-that any tokenised integers are included. This supports legacy datanames where
-the object part of the data name is the matrix element column+row.::
+An attribute reference of form `<cat>.<object>` is created from a primary followed by a period
+and string that identifies the object name in the category.  As such object
+names can be composed of digits (for example, matrix elements), we make sure to include
+both identifiers and tokenised integers as candidates for <object>.::
 
     attributeref = primary  "."  ( ID | INTEGER ) ;
 
-A element reference is formed from a primary followed by a slice or a series of
-dotted assignments. If the primary is a category object and the explicit dotlist
+Square brackets are used to create a reference to an element in a list or
+category. If the primary is a category object and the explicit dotlist
 notation is not used, the value in the square brackets must be a single-element
-slice list (an expression) which is the value of the single key in this category.::
+slice list (an expression) which is the value of the single key in this category.
+A dotlist of the form `<category>[.id1 = x, .id2 = y, ...]` is used to
+refer to the row of `<category>` for which `id1`,`id2`,... take the specified
+values.
+
+If the primary is a list or matrix, the item in the square brackets must be
+a proper slice or slice list as for Python. ::
 
     subscription = primary  "["  (proper_slice | slice_list | dotlist)  "]" ;
     dotlist =  dotlist_element {"," dotlist_element } ;
@@ -206,7 +215,7 @@ in the list refers to a separate dimension of the sliced object.::
     slice_item = expression | proper_slice ;
     
 A function call is an identifier followed by round brackets enclosing a list of arguments
-to the function. TODO: why does a NEWLINE before the final paren wreck the grammar?::
+to the function.::
 
     call = ID  LEFTPAREN [expression_list] RIGHTPAREN ;
 
@@ -215,7 +224,8 @@ Operators
 
 Operators act on primaries.
 The power operator raises the primary to the power of the second expression,
-which is essentially a signed power expression. ::
+which is essentially a signed power expression.
+TODO: check that precendence is actually correct. ::
 
     power = primary  [ PWR  factor ] ;
     
@@ -232,8 +242,8 @@ Addition and subtraction. ::
     arith = term | ( arith ( PLUS | MINUS ) term ) ;
 
 We split the definition of comparison operators into two sets here so that
-we can use a subset of comparison operations in compound statements
-to test loops. ::
+we can use a subset of comparison operations in compound statements that
+allow only certain loop elements to be used.::
 
     restricted_comp_operator = GT | LT | GTE | LTE | NEQ | ISEQUAL ;
 
@@ -311,7 +321,8 @@ is included in a block, the statements must be enclosed in braces. ::
     
 IF statements may contain multiple conditions separated by ELSEIF
 keywords (which is like a switch statement), or a single alternative
-action using the ELSE keyword. ::
+action using the ELSE keyword. In practice `ELSE IF` is matched as
+an if_stmt and only `ELSEIF` triggers the final production. ::
 
     if_stmt = IF "(" expression ")" suite {else_if_stmt} [else_stmt];
     else_stmt = ELSE  suite ;
@@ -340,13 +351,13 @@ Repeat statements repeat the contents of `suite` until a `BREAK` statement is ca
 With statements bind a local variable to a category variable (aliasing). This is
 required if a category name would be identical to a keyword. ::
 
-    with_stmt = WITH  ID  AS  ID  {NEWLINE}  suite ;
+    with_stmt = WITH  ID  AS  ID  suite ;
 
 Each argument in a function definition argument list is followed by a list with two
 elements: the container type, and the type of the object in the container. ::
 
     funcdef = FUNCTION  ID  "("  arglist  ")"  suite ;
-    arglist = one_arg | (arglist "," {NEWLINE} one_arg) 
+    arglist = one_arg | (arglist "," one_arg) 
     one_arg = ID  ":"  "["  expression  ","  expression  "]" ;
 
 Complete dREL code
@@ -355,10 +366,3 @@ Complete dREL code
 A complete dREL method is composed of a sequence of statements. ::
 
     input = statements ;
-
-Literal productions
--------------------
-Some more complex literal productions not included in tokens. ::
-    
-    augop = APPEND | AUGADD | AUGMIN | AUGDROP | AUGMUL | EQUALS ; 
-    
