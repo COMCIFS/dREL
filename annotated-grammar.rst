@@ -110,6 +110,7 @@ Keywords. These are case insensitive, but this is ignored below.::
     WITH = "with"
     WHERE = "where"
     ELSE = "else"
+    ELSEIF = /"else if"|"elseif"/
     NEXT = "next"
     BREAK = "break"
     IF = "if"
@@ -216,15 +217,15 @@ Operators act on primaries.
 The power operator raises the primary to the power of the second expression,
 which is essentially a signed power expression. ::
 
-    power = primary  [ "**"  factor ] ;
+    power = primary  [ PWR  factor ] ;
     
 A sign may optionally prefix a primary. ::
 
-    factor = power |  ("-"| "+")  factor  ;
+    factor = power |  (PLUS|MINUS)  factor  ;
 
 Multiplication, division and cross product operations. ::
 
-    term = factor {  (MULT|DIV|CROSS) factor } ;
+    term = factor | (term (MULT|DIV|CROSS) factor ) ;
 
 Addition and subtraction. ::
 
@@ -281,14 +282,12 @@ grammar can perform specialised operations depending on which side of
 the assignment they are located. An expression list is also allowed as
 a statement on its own, mostly so that side-effect functions can be
 called, although this is not recommended and may be deprecated. In the
-current core CIF this is used in a demonstration validation function
+current core CIF this is used only in a demonstration validation function
 that calls an 'Alert' function.
 
-A print statement is provided for debugging purposes only.The output
-of a print statement does not form part of the formal behaviour of a
-dREL method.::
+::
 
-    small_statement = expression_list | assignment | dotlist_assign | BREAK | NEXT | print_stmt;
+    small_statement = expression_list | assignment | dotlist_assign | BREAK | NEXT ;
     assignment =  lhs augop rhs ;
     lhs = expression_list ;
     rhs = expression_list ;
@@ -298,17 +297,11 @@ multiple columns of a category object at the same time, that is, using the same 
 production for `dotlist` is presented above in the Primaries section.::
 
     dotlist_assign = ID "("  dotlist  ")" ;
-
-A print statement outputs the supplied expression. Implementations may determine what
-types of expressions to accept, as this statement is provided purely for debugging and does
-not form part of the formal behaviour of the method. ::
-
-    print_stmt = PRINT expression ;
     
 Compound statements contain other statements. dREL defines if, for, do, loop, with, repeat
 and function definition compound statements. ::
 
-    compound_statement = if_stmt | if_else_stmt | for_stmt | do_stmt | loop_stmt
+    compound_statement = if_stmt | for_stmt | do_stmt | loop_stmt
                          | with_stmt | repeat_stmt | funcdef ;
 
 Compound statements contain "suites" of statements. Where more than one statement
@@ -316,11 +309,13 @@ is included in a block, the statements must be enclosed in braces. ::
 
     suite = statement | "{" statements "}" ;
     
-IF statements may contain multiple conditions separated by ELSEIF keywords, or a
-single alternative action using the ELSE keyword. ::
+IF statements may contain multiple conditions separated by ELSEIF
+keywords (which is like a switch statement), or a single alternative
+action using the ELSE keyword. ::
 
-    if_else_stmt = if_stmt  ELSE  suite ;
-    if_stmt = ([if_stmt  ELSEIF] | IF)  "("  expression  ")" suite ;
+    if_stmt = IF "(" expression ")" suite {else_if_stmt} [else_stmt];
+    else_stmt = ELSE  suite ;
+    else_if_stmt = ELSEIF  "("  expression  ")" suite ;
 
 For statements perform simple loops over the items in `expression_list`, assigning
 them in turn to the items in `id_list`. `id_list` can be optionally enclosed in
@@ -359,7 +354,7 @@ Complete dREL code
 
 A complete dREL method is composed of a sequence of statements. ::
 
-    input = {NEWLINE} statements ;
+    input = statements ;
 
 Literal productions
 -------------------
@@ -367,4 +362,3 @@ Some more complex literal productions not included in tokens. ::
     
     augop = APPEND | AUGADD | AUGMIN | AUGDROP | AUGMUL | EQUALS ; 
     
-    ELSEIF = ELSE IF ;

@@ -52,45 +52,22 @@ class TreeToPy(Transformer):
                  
 @ Initialisation.   We require a lot of contextual information:
 
-1. the category/object in which this definition appears, in order to identify the return value
+1. the dataname so that we can determine the category/object in which this definition
+   appears, in order to identify the return value
 2. the name we wish to give the function
-4. the relevant dictionary for type and key information.
+3. the relevant dictionary for type and key information.
 
 <<Initialise transformer>>=
-def __init__(self, target_cat, target_object, func_name, cifdic,is_func=False):
+def __init__(self, dataname, func_name, cifdic):
     super().__init__()
-    self.func_name = func_name
-    self.target_cat = target_cat
-    self.target_object = target_object
     self.dic = cifdic
-    self.is_func = is_func
+    self.func_name = func_name
+    self.target_cat = self.dic[dataname]['_name.category_id']
+    self.target_object = self.dic[dataname]['_name.object_id']
+    self.is_func = self.dic[self.target_cat].get('_definition.class','') == 'Functions'
     <<Internal use variables>>
 
 @         
-Variable ``special_ids`` is a list
-of scopes, each containing a table of variables that need to be
-specially handled, either because they correspond to datanames (first
-entry in list) or to variables that have been aliased to categories
-via loop or with statements.  The scoping is not used particularly
-often in the following code as the example methods do not really test
-out the scoping.
-
-A variable defined in a loop statement will also have a loop index
-that needs to be incremented and used to index a packet; this is the
-second entry in the list indexed by the variable alias. The second
-entry is also used to hold the dummy variable for the 'with'
-statement.  The generated function can thus be mapped across the keys
-of the with table to calculate the whole column of a category.
-
-The final boolean entry determines whether the second entry is for
-looping (True) or not (False).
-
-At the beginning of the traverse we initialise special_id with the
-explicit category name if we are in a loopable category, so that any
-references to items in this category will be dealt with as for
-explicit `with` statements.  Note that we append a single underscore to
-the alias to allow it to be picked up when the search for special ids
-is undertaken e.g. in the ATTRIBUTE case.
 
 <<Internal use variables>>=
 self.cat_ids = set([])   #categories mentioned in the method
@@ -106,13 +83,15 @@ The final function body is output by concatenating the strings generated before,
 separated by newlines.::
 <<Statements>>=
 def input(self,args):
+    cat_string = "import numpy\nfrom CifFile.drel import drel_runtime\n"
     if self.is_func:
-        return args[0]
-    cat_string = ""
+        return cat_string + args[0]
     for c in self.cat_ids:
         cat_string = cat_string + "%s = CategoryObject(__datablock,'%s',__dict)\n" % (c,c)
     header_code = "def %s(__datablock,__dict,__packet):" % self.func_name
-    body = cat_string + args[0] + "\nreturn __dreltarget"
+    debug_string = "\nprint('" + "%s -> '),\n" % self.target_object
+    debug_string += "print(__dreltarget)"
+    body = cat_string + args[0] + debug_string+"\nreturn __dreltarget"
     return header_code + add_indent("\n"+body)
 
 def statements(self,args):
@@ -183,6 +162,8 @@ def enclosure(self,args):
     return _concat(args)
 
 def arith(self,args):
+    if len(args)>1:
+        return fix_mathops(args[1],args[0],args[2])
     return _concat(args)
 
 def power(self,args):
@@ -192,8 +173,8 @@ def factor(self,args):
     return _concat(args)
 
 def term(self,args):
-    if len(args)>1 and args[1]=="^":
-        print("Warning: cross product not implemented")
+    if len(args)>1:
+        return fix_mathops(args[1],args[0],args[2])
     return _concat(args)
 
 def restricted_comp_operator(self,args):
@@ -326,13 +307,13 @@ def for_stmt(self,args):
     return outstring
 
 def do_stmt(self,args):
-    outstring = "for " + args[1] + "in range(" + args[3]
-    outstring = outstring + "," + args[4] + "+1"+","
+    outstring = "for " + args[1] + " in range(" + args[2]
+    outstring = outstring + "," + args[3] + "+1"+","
     if len(args)>7:  #increment
         increment = args[7]
     else:
         increment = "1"
-    outstring = outstring + increment + add_indent("\n"+args[-1])
+    outstring = outstring + increment + "):" + add_indent("\n"+args[-1])
     return outstring
 
 def loop_stmt(self,args):
@@ -346,16 +327,22 @@ def with_stmt(self,args):
         withstr = withstr + "\n" + args[-1]
     else:
         raise(ValueError,"Only current category can be aliased with 'WITH': given %s, expected %s" %
-              args[3],self.target_cat)
+              (args[3],self.target_cat))
+    return withstr
 
 # An if stmt may have 'elseif' as the second argument.
 def if_stmt(self,args):
-    if args[1].lower() == 'elseif':
-        ifstr = args[0] + '\nelseif'
-    else:
-        ifstr = 'if '
-    ifstr += args[-2] + ":"+add_indent("\n"+args[-1])
+    ifstr = "if " + args[1] + ":"+add_indent("\n"+args[2])
+    ifstr = ifstr + _concat(args[3:])
     return ifstr
+
+def else_stmt(self,args):
+    return "\nelse:" + add_indent("\n"+args[-1])
+
+def else_if_stmt(self,args):
+    ifstr = "\nelif " + args[1] + ":" + add_indent("\n"+args[-1])
+    return ifstr
+
 @ 
 Functions.  A function call may invoke a built-in function, so we have
 to convert these to know python functions.
@@ -405,6 +392,9 @@ category name we derive all the information we need to extract the correct row a
 The category object defines only the minimum necessary for access via square bracket and
 iteration.
 
+It is possible that a category has no 'official' keys provided, in which case we are assured
+that the combination of all data names present forms a key.
+
 <<Category object>>=
 class CategoryObject(object):
     def __init__(self,datablock,catname,cifdic):
@@ -418,13 +408,29 @@ class CategoryObject(object):
         self.__object_to_name = dict(zip(self.__object_names,self.__data_names))
         self.__key_names = cifdic[catname].get('_category_key.name',[])
         self.__is_looped = cifdic[catname].get('_definition.class','Set') == 'Loop'
+        self.__have_vals = list([k for k in self.__data_names if k in self.__datablock])
+        self.__key_index = []
         if self.__is_looped:
-            keylists = [datablock[k] for k in self.__key_names]
-            if len(self.__key_names)==1:
-                self.__key_index = list(keylists)[0]
-            else:
-                self.__key_index = list(zip(*keylists)) #order in tuple is same as key_names
+            self.create_keylist()
+            
+    def create_keylist(self):
+        """Create a list of data names that can be used as keys of the category"""
+        have_keys = [k for k in self.__key_names if k in self.__have_vals]
+        if len(have_keys) == len(self.__key_names):
+            keylists = [self.__datablock[k] for k in self.__key_names]
+            self.__use_keys = True
+        else:   #use all data names in the category
+            keylists = [self.__datablock[k] for k in self.__have_vals]
+            self.__use_keys = False   #do not have proper keys
+        if len(self.__key_names)==1:
+            self.__key_index = list(keylists)[0]
+        else:
+            self.__key_index = list(zip(*keylists)) #order in tuple is same as key_names
 
+    def __len__(self):
+        """Calculate the number of packets"""
+        return len(self.__datablock[self.__have_vals[0]])
+            
     def __getitem__(self,itemdict):
         """getitem is passed a dictionary where the entries should
         be the keys and the values are the requested values for
@@ -433,6 +439,7 @@ class CategoryObject(object):
         The result is a named tuple for which individual elements
         can be accessed using 'dot'."""
         if not self.__is_looped:
+            pack_no = 0
             def get_packet_value(object_id):
                 dataname = self.__object_to_name[object_id]
                 return self.__datablock[dataname]
@@ -442,27 +449,33 @@ class CategoryObject(object):
             pack_no = self.__key_index.index(value)
           else:
             # convert object names to data names
-            index_vals = tuple([itemdict[self.__name_to_object[k]] for k in self.__key_names])
-            pack_no = self.__key_index.index(index_vals)
+            if self.__use_keys == True:
+                index_vals = tuple([itemdict[self.__name_to_object[k]] for k in self.__key_names])
+                pack_no = self.__key_index.index(index_vals)
+            else:
+                raise(ValueError,"Unable to index into category %s as keys are missing" % self.__catname)
           # create a function that returns the needed values
           def get_packet_value(object_id):
             dataname = self.__object_to_name[object_id]
-            return self.__datablock[dataname][pack_no]
-        return Packet(get_packet_value)
+            value = self.__datablock[dataname][pack_no]
+            print("Packet %d of %s is %s" % (pack_no,dataname,repr(value)))
+            return value
+        return Packet(get_packet_value,pack_no)
 
     def __iter__(self):
         """Iterate over all packets"""
         if not self.__is_looped:
+            print("Not looped: %s" % self.__catname)
             yield self['dummy']
             raise(StopIteration)
         # for efficiency
-        obj_names = list([self.__name_to_object[k] for k in self.__key_names])
-        for keyvals in self.__key_index:
-            if len(self.__key_names) == 1:
-                itemdict = {obj_names[0]:keyvals}
-            else:
-                itemdict = dict(zip(obj_names,keyvals))
-            yield self[itemdict]
+        for pack_no in range(len(self)):
+            def get_packet_value(object_id):
+                dataname = self.__object_to_name[object_id]
+                return self.__datablock[dataname][pack_no]
+            yield Packet(get_packet_value,pack_no)
+        print("Finished iteration over %s" % self.__catname)
+        raise(StopIteration)
             
     def __str__(self):
         outdict = {"name":self.__catname}
@@ -472,34 +485,43 @@ class CategoryObject(object):
         return str(outdict)
 
     def __getattr__(self,att):
-        """If unlooped this is OK"""
+        """We can directly access values in an unlooped category"""
+        print("Cat Obj request for attribute %s" % att)
         if not self.__is_looped:
             db = self.__datablock
             nmd = self.__object_to_name
             return db[nmd[att]]
-        else:
-            raise(AttributeError)
         
 @ The packet object
 The result of accessing an element of a category object is a packet object.
-A packet objects elements are accessed using ``.''. 
+A packet objects elements are accessed using ``.''.  We allow an integer
+to be attached to a packet.  This should be unique for all packets in a
+category.
 
 <<A packet object>>=
 class Packet(object):
     """An object mimicking a single row in a category, with objects accessed
     by attribute"""
-    def __init__(self,access_function):
+    def __init__(self,access_function,number=0):
         self.get_fun = access_function
+        self.number = number
 
     def __getattribute__(self,attname):
-        return object.__getattribute__(self,'get_fun')(attname)
+        if '__current_row' not in attname:
+            return object.__getattribute__(self,'get_fun')(attname)
+        else:
+            return object.__getattribute__(self,'_Packet__current_row')
 
-
+    def __current_row(self):
+        return object.__getattribute__(self,'number')
+    
 @ A data wrapper
 
 We wish any unfulfilled data accesses to call the appropriate dictionary method. This
 example replaces the PyCIFRW functionality in order to use the dREL method derived
 here.
+
+We also pre-load any functions defined in the dictionary.
 
 <<A data wrapper>>=
 class ExecBlock(object):
@@ -510,10 +532,21 @@ class ExecBlock(object):
                            parser="lalr",lexer="contextual")
         self.cache = {}  #store already done
         self.use_drel = False
+        self.namespace = {}
+        self.preload_functions()
 
     def switch_drel(self):
         self.use_drel = not self.use_drel
-        
+
+    def preload_functions(self):
+        func_meths = [f for f in self.dic.keys() if self.dic[f].get('_name.category_id')=='function']
+        func_meths = [(f,self.dic[f]['_method.expression'][0]) for f in func_meths]
+        # now prepare them all
+        for name,text in func_meths:
+            transformer = TreeToPy(name,"",self.dic)
+            drel = transformer.transform(self.parser.parse(text))
+            exec(drel,globals())
+
     def __getitem__(self,itemname):
         if not self.use_drel:
             return self.datablock[itemname]
@@ -532,17 +565,26 @@ class ExecBlock(object):
         method = method[0]   #will fail for multiple methods
         target_cat = self.dic[itemname]['_name.category_id']
         target_obj = self.dic[itemname]['_name.object_id']
-        transformer = TreeToPy(target_cat,target_obj,"myfunc",self.dic)
+        funcname = target_cat + "_" + target_obj + "_func"
+        transformer = TreeToPy(itemname,funcname,self.dic)
         drel = transformer.transform(self.parser.parse(method))
         print(drel)
         exec(drel,globals())
         master_cat = CategoryObject(self,target_cat,self.dic)
-        result = list([myfunc(self,self.dic,p) for p in master_cat])
+        result = []
+        for p in master_cat:
+            exec("self.x = %s(self,self.dic,p)" % funcname,globals(),locals())
+            result.append(self.x)
         if self.dic[target_cat].get('_definition.class','Set')=='Set':
             assert len(result)==1
             result = result[0]
         self.cache[itemname.lower()]=result
         return result
+
+    def __contains__(self,name):
+        """We consider something to be present if it is either cached or
+        in the underlying data block"""
+        return name.lower() in self.cache or name.lower() in self.datablock
     
     <<Convert string to appropriate type>>
     
@@ -582,9 +624,9 @@ not use the separator.
 
 <<Utility functions>>=
 def _concat(args,separator=""):
-    print("Concatenating %s" % repr(args))
+    #print("Concatenating %s" % repr(args))
     if len(args)==1:
-        print("Returning %s" % args[0])
+    #    print("Returning %s" % args[0])
         return args[0]
     s = ""
     for a in args:
@@ -594,7 +636,7 @@ def _concat(args,separator=""):
        else:
            b = a
        s = s + b + separator
-    print("Returning %s" % s)
+    #print("Returning %s" % s)
     return s
 
 def add_indent(some_text,n=4):
@@ -660,6 +702,8 @@ def get_function_name(in_name):
         return "numpy.matrix","",".astype('float64')"
     if test_name == 'sort':
         return "","",".sort()"
+    if test_name == 'current_row':
+        return "","",".__current_row()"
     return in_name,"",""   #dictionary defined
 
 @  Mathematical operations in dREL are complicated by the need to handle matrix
