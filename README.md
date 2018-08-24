@@ -15,11 +15,15 @@ https://github.com/COMCIFS/JsCifBrowser) and the other is bundled with the PyCIF
 (see https://bitbucket.org/jamesrhester/pycifrw). Neither can be considered to fully implement the specification
 in the paper, but both handle most or all dREL methods in approved IUCr CIF dictionaries.
 
+# Documentation
+
+Documentation currently consists solely of `annotated_grammar.rst`, together with the paper mentioned above.
+
 # Examples
 
 All lines starting with 4 spaces or more in file `annotated_grammar.rst` can be extracted to create an
-EBNF that is close to the ISO standard, with differences noted in the annotated file. The Makefile in the
-Examples/Lark directory use the annotated grammar and the Lark parser to create a fully-functional system
+EBNF that is close to the ISO standard, with differences noted in the annotated grammar. The Makefile in the
+Examples/Lark directory uses the annotated grammar and the Lark parser to create a fully-functional system
 for translating dREL code to Python and recursively executing it when provided with a CIF data file.
 
-Further examples using different source code and CIF access libraries are welcome.
+Further examples using different coding languages and CIF access libraries are welcome.
