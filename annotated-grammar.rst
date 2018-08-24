@@ -3,8 +3,8 @@ A DRAFT annotated grammar for dREL
 
 The following grammar is based on the dREL publication (Spadaccini, N., Castleden,
 I. R., du Boulay, D. and Hall, S. R.,"dREL: A relational expression language
-   for dictionary methods",  _J. Chem. Inf. Model._, 2012, **52** (8) pp 1917-1925.
-   https://dx.doi.org/10.1021/ci300076w ),  combined with
+for dictionary methods", *J. Chem. Inf. Model.* , 2012, **52** (8) pp 1917-1925.
+https://dx.doi.org/10.1021/ci300076w ),  combined with
 the dREL examples found in the core CIF dictionary.  A few changes
 have been included that may require approval from COMCIFS.  In particular:
 
@@ -16,7 +16,7 @@ have been included that may require approval from COMCIFS.  In particular:
    allows rows in multi-key categories to be referenced.
 
 3. Newlines are completely ignored. Certain readings of the original
-   paper suggest that this was not the original intention, but the
+   paper suggest that this was not the intention, but nevertheless the
    language presented in the paper does not need newlines in order to
    remove ambiguity.
 
@@ -26,9 +26,8 @@ The EBNF used here differs from the ISO standard as follows:
 2. The expression separator is a space, not a comma
 3. Character ranges may be included in tokens to save space
 4. Regular expressions are used to create tokens.
-
-Postprocessing of this file changes '=' to ':' in productions and
-removes trailing semicolons in order to be processed through the Lark parser.
+5. Whitespace is handled outside the EBNF grammar. The appearance of whitespace terminates
+a token unless whitespace is expected as part of the token.
     
 Tokens
 ------
@@ -92,7 +91,7 @@ An imaginary number is a real or integer followed by the letter "j". ::
     imaginary = (real | INTEGER) ("j"|"J")
 
 A longstring is enclosed in triple quotes or triple double quotes, and
-may contain NEWLINE. TODO: check that backslashes work properly.::
+may contain newline characters. TODO: check that backslashes work properly.::
 
     LONGSTRING = /'''[^\\][.\n]*'''|"""[^\\][.\n]*"""/
     SHORTSTRING = /'[^']*'|"[^"]*"/
