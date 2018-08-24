@@ -33,56 +33,81 @@ Tokens
 ------
 
 Expressions appearing between forward slashes are regular expressions. The
-assumption in the grammar is that the longest matching token is the one selected. ::
+assumption in the grammar is that the longest matching token is the one selected.
 
-    ISEQUAL = "=="
-    PWR = "**"
-    NEQ = "!="
-    GTE = ">=" 
-    LTE = "<="
-    GT = ">"
-    LT = "<"
-    APPEND = "++="
-    AUGADD = "+="
-    AUGMIN = "-="
-    AUGMUL = "*="
-    AUGDROP = "--="
-    ELLIPSIS = "..." 
-    BADOR = "||"
-    BADAND = "&&"
+Delimiters
+~~~~~~~~~~
+::
+
     LEFTPAREN = "("
     RIGHTPAREN = ")"
     LEFTBRACE = "{"
     RIGHTBRACE = "}"
+    LSQUAREB = "["
+    RSQUAREB = "]"
+    COMMA = ","
+    COLON = ":"
+    SEMI = ";"
+
+Operators
+~~~~~~~~~
+::
+
+    PWR = "**"
     PLUS = "+"
     MINUS = "-"
     MULT = "*"
     DIV = "/"
     PERIOD = "."
     CROSS = "^"
-    EQUALS = "="
-    COMMA = ","
-    LSQUAREB = "["
-    RSQUAREB = "]"
-    COLON = ":"
-    SEMI = ";"
-    INTEGER = /[0-9]+/
-    OCTINT = /0o[0-7]+/
-    HEXINT = /0x[0-9A-Fa-f]+/
-    BININT = /0b[0-1]+/
 
+Logical operations
+~~~~~~~~~~~~~~~~~~
+::
+
+    ISEQUAL = "=="
+    NEQ = "!="
+    GTE = ">=" 
+    LTE = "<="
+    GT = ">"
+    LT = "<"
+
+The following two operations (bitwise or and and) were
+not defined in the paper but appear in the core dictionary. ::
+
+    BADOR = "||"
+    BADAND = "&&"
+    
+Assignment
+~~~~~~~~~~
+::
+
+    EQUALS = "="
+    APPEND = "++="
+    AUGADD = "+="
+    AUGMIN = "-="
+    AUGMUL = "*="
+    AUGDROP = "--=" 
 
 For convenience all assignment operations are grouped into a single production. ::
     
     augop = APPEND | AUGADD | AUGMIN | AUGDROP | AUGMUL | EQUALS ; 
     
+Literals
+~~~~~~~~
+::
+
+    INTEGER = /[0-9]+/
+    OCTINT = /0o[0-7]+/
+    HEXINT = /0x[0-9A-Fa-f]+/
+    BININT = /0b[0-1]+/
 
 A real number must contain a decimal point, and may be
 optionally followed by an exponent after the letter "E". A digit before the
 decimal point is not required. However, this means that the category-object
 construction "t.12" could be tokenised as "ID REAL" instead of the
 manageable "ID PERIOD INTEGER", so we write out the real and imaginary
-productions in full. ::
+productions using the INTEGER token to force the latter token sequence. ::
     
     real = ((INTEGER "." {INTEGER})|("." INTEGER))[("E"|"e") ["+"|"-"] INTEGER ]
 
@@ -96,7 +121,10 @@ may contain newline characters. TODO: check that backslashes work properly.::
     LONGSTRING = /'''[^\\][.\n]*'''|"""[^\\][.\n]*"""/
     SHORTSTRING = /'[^']*'|"[^"]*"/
 
-Keywords. These are case insensitive, but for brevity this has not been
+Keywords. 
+~~~~~~~~~
+
+These are case insensitive, but for brevity this has not been
 made explicit.::
 
     AND = "and"
@@ -116,7 +144,6 @@ made explicit.::
     IF = "if"
     FUNCTION = "function"
     REPEAT = "repeat"
-    PRINT = "print"
 
 Identifiers must begin with a letter or underscore and may contain alphanumerics, underscore and
 the dollar sign. ::
