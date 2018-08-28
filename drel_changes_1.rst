@@ -24,11 +24,11 @@ Explanation
 ~~~~~~~~~~~
 
 The dREL paper states that the value of a data name from a Set
-category can be accessed by using the form `<category>.<name>` in a
-dREL script, for example `cell.volume` (p 1919, "Data References in
+category can be accessed by using the form ``<category>.<name>`` in a
+dREL script, for example ``cell.volume`` (p 1919, "Data References in
 dREL").  However, the dREL methods in the current core CIF dictionary
 and the dREL paper almost always use a form with a leading underscore,
-i.e. `_<category>.<name>`.
+i.e. ``_<category>.<name>``.
 
 Discussion
 ~~~~~~~~~~
@@ -39,12 +39,12 @@ provided as a way to disambiguate ordinary variables from dictionary
 items; however, as a period character must appear in a dictionary
 reference, and may not appear in a variable, such disambiguation is
 unnecessary.  It is also important to note that the period character
-is an operator in dREL, so the construction `cell.volume` is formally
-referring to the `volume` column in the current packet of the `cell`
+is an operator in dREL, so the construction ``cell.volume`` is formally
+referring to the ``volume`` column in the current packet of the ``cell``
 category.  In this context, the leading underscore is potentially
 misleading.
 
-The `with` statement is available to alias category names in any
+The ``with`` statement is available to alias category names in any
 situation where a category name may collide with a language keyword.
 
 Proposal 2: newline is not significant
@@ -64,10 +64,10 @@ which may be construed as allowing newline to terminate an expression.
 Discussion
 ~~~~~~~~~~
 
-The draft dREL grammar at the COMCIFS/drel repository assumes that
-newline is whitespace.  The example parser based on this grammar does
+The draft dREL grammar at the COMCIFS/dREL repository assumes that
+newline is whitespace.  The example parser automatically generated from this grammar does
 not identify any problems with the grammar.  Nick Spadaccini
-has advised me that newline was not meant to be significant in the
+has advised that newline was not meant to be significant in the
 dREL grammar.
 
 [1] Spadaccini et. al,
