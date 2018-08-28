@@ -32,11 +32,14 @@ a token unless whitespace is expected as part of the token.
 Tokens
 ------
 
-Expressions appearing between forward slashes are regular expressions. The
-assumption in the grammar is that the longest matching token is the one selected.
+In the token descriptions below, expressions appearing between forward
+slashes are regular expressions. The assumption in the grammar is that
+the longest matching token is the one selected.
 
 Delimiters
 ~~~~~~~~~~
+
+Delimiters are discussed in the context of their use, below.
 ::
 
     LEFTPAREN = "("
@@ -51,15 +54,22 @@ Delimiters
 
 Operators
 ~~~~~~~~~
+
+Operators are listed below in order of precedence. Multiplication, division
+and cross product have equal precedence. When plus and minus are used to
+give the sign of a number, their precedence is higher than multiplication.
+Period is used for attribute reference.
+
 ::
 
+    PERIOD = "."
     PWR = "**"
-    PLUS = "+"
-    MINUS = "-"
     MULT = "*"
     DIV = "/"
-    PERIOD = "."
     CROSS = "^"
+    PLUS = "+"
+    MINUS = "-"
+ 
 
 Logical operations
 ~~~~~~~~~~~~~~~~~~
@@ -80,6 +90,7 @@ not defined in the paper but appear in the core dictionary. ::
     
 Assignment
 ~~~~~~~~~~
+See the discussion of assignments in the relevant section of the grammar.
 ::
 
     EQUALS = "="
@@ -202,23 +213,36 @@ attribute reference, a subscription, or a function call. ::
 
     primary = atom | attributeref | subscription | call ;
 
-An attribute reference of form `<cat>.<object>` is created from a primary followed by a period
-and string that identifies the object name in the category.  As such object
-names can be composed of digits (for example, matrix elements), we make sure to include
-both identifiers and tokenised integers as candidates for <object>.::
+An attribute reference of form `<cat>.<object>` is created from a
+primary followed by a period and string that identifies the object
+name in the category.  As such object names can be composed of digits
+(for example, matrix elements), we make sure to include both
+identifiers and tokenised integers as candidates for `<object>`. An
+attribute reference returns the value of the data name defined by
+`<cat>.<object>` in the current row. It is an error to perform
+attribute access on a non-category type. It is also an error to perform
+attribute access when a specific row is not identifiable. ::
 
     attributeref = primary  "."  ( ID | INTEGER ) ;
 
 Square brackets are used to create a reference to an element in a list or
-category. If the primary is a category object and the explicit dotlist
+category. If `primary` is a category object and the explicit dotlist
 notation is not used, the value in the square brackets must be a single-element
 slice list (an expression) which is the value of the single key in this category.
 A dotlist of the form `<category>[.id1 = x, .id2 = y, ...]` is used to
-refer to the row of `<category>` for which `id1`,`id2`,... take the specified
+refer to the row of `<category>` for which `id1`, `id2`,... take the specified
 values.
 
+The result of applying a subscription to a category is an object which
+has particular values for each column of the category. These values
+are accessed using an attribute reference (see above). For
+example, `atom_site['O1'].fract_x` gives the fractional x coordinate
+for the row in in the `atom_site` loop for which the atom label is "O1".
+This is equivalent to `atom_site[.label = 'O1'].fract_x`, but `.label`
+may be omitted as it is the only key data name of category `atom_site`.
+
 If the primary is a list or matrix, the item in the square brackets must be
-a proper slice or slice list as for Python. ::
+a proper slice or slice list as for Python (see below). ::
 
     subscription = primary  "["  (proper_slice | slice_list | dotlist)  "]" ;
     dotlist =  dotlist_element {"," dotlist_element } ;
@@ -228,7 +252,12 @@ A slice is primary followed by a series of up to three expressions separated by 
 and/or commas inside square brackets.  The expressions should evaluate to integers. When one
 colon appears inside the square brackets, it delimits the start and end coordinates of the
 sliced object. When two colons appear (a `long_slice`) the final expression refers to
-the slice step. ::
+the slice step.
+
+There is no ambiguity in the use of square brackets for slicing and
+subscription, as category objects have no predefined ordering and therefore `<category>[0]`
+must refer to the row of `<category>` for which the key data name is equal to 0,
+rather than the "first" element of `<category`.::
 
     proper_slice = short_slice | long_slice ;
     short_slice = COLON | (expression  COLON  expression) | (COLON expression) | (expression  COLON) ;
@@ -255,7 +284,8 @@ TODO: check that precendence is actually correct. ::
 
     power = primary  [ PWR  factor ] ;
     
-A sign may optionally prefix a primary. ::
+A sign may optionally prefix a primary. As this has lower precedence
+than the power operation, `-1**2` equals -1.::
 
     factor = power |  (PLUS|MINUS)  factor  ;
 
@@ -312,10 +342,21 @@ separated by semicolons for readability. ::
 
 Simple statements include one-word statements and assignments, where
 assignment to multiple objects in a category using dotted lists is
-included. Separate productions are provided for the left-hand and
+included.
+
+A `BREAK` statement exits from the nearest enclosing for, loop, repeat or do statement.
+(see compound statements below). A `NEXT` statement jumps immediately to the
+next iteration of the nearest enclosing for, loop, repeat or do statement. If the
+current item is the final item, it exits the loop.
+
+TODO: discuss assignments based on material in dREL paper.
+
+Separate productions are provided for the left-hand and
 right-hand side of the assignment so that parsers based on this
 grammar can perform specialised operations depending on which side of
-the assignment they are located. An expression list is also allowed as
+the assignment they are located.
+
+An expression list is also allowed as
 a statement on its own, mostly so that side-effect functions can be
 called, although this is not recommended and may be deprecated. In the
 current core CIF this is used only in a demonstration validation function
@@ -329,7 +370,8 @@ that calls an 'Alert' function.
     rhs = expression_list ;
 
 Dotted assignments are list of assignments to dotted identifiers, used for assigning to
-multiple columns of a category object at the same time, that is, using the same row. The
+multiple columns of a category object at the same time in the same row. Such assignments
+may only be performed in methods appearing in category definitions. The
 production for `dotlist` is presented above in the Primaries section.::
 
     dotlist_assign = ID "("  dotlist  ")" ;
@@ -341,14 +383,19 @@ and function definition compound statements. ::
                          | with_stmt | repeat_stmt | funcdef ;
 
 Compound statements contain "suites" of statements. Where more than one statement
-is included in a block, the statements must be enclosed in braces. ::
+is included in a suite, the statements must be enclosed in braces. ::
 
     suite = statement | "{" statements "}" ;
     
 IF statements may contain multiple conditions separated by ELSEIF
 keywords (which is like a switch statement), or a single alternative
 action using the ELSE keyword. In practice `ELSE IF` is matched as
-an if_stmt and only `ELSEIF` triggers the final production. ::
+an if_stmt and only `ELSEIF` triggers the `else_if_stmt` production.
+If `expression` evaluates to true, the following `suite` is executed,
+otherwise the `suite` belonging to the `else_stmt` is executed, if
+present.
+
+::
 
     if_stmt = IF "(" expression ")" suite {else_if_stmt} [else_stmt];
     else_stmt = ELSE  suite ;
@@ -361,8 +408,16 @@ square brackets. ::
     for_stmt = FOR  (id_list | "[" id_list "]")  IN  expression_list  suite ;
     id_list = [id_list  ","]  ID ;
     
-Loop statements loop over categories row by row, assigning each new row to the
-identifier provided .::
+`Loop a as b` iterates over rows of category `b`, assigning them to
+variable `a` and executing `suite`, which can then access the values
+of particular data names within `a` using attribute access
+(`a.c`). The form `Loop a as b : m` will additionally assign a
+numerical row index to `m` within `suite`. The form `Loop a as b: m
+cond n` will only perform the iteration for a particular row if the
+condition `m cond n` is true. TODO: do we really need sequence
+numbers in loops given that there is no canonical order?
+
+::
 
     loop_stmt =  LOOP ID AS ID [":"  ID  [restricted_comp_operator  ID]] suite ;
 
