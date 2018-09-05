@@ -21,13 +21,13 @@ Proposal 3: compound key specification
 
 dREL as published permits a particular row in a loop to be specified
 by providing the value of the key for that loop using the syntax
-`<category>[keyvalue]`, so for example, `atom_site['O1']` would be the
-row in the atom_site loop for which `_atom_site.label` (the key data
-name for category `atom_site`) is 'O1'.  We propose expanding
+``<category>[keyvalue]``, so for example, ``atom_site['O1']`` would be the
+row in the atom_site loop for which ``_atom_site.label`` (the key data
+name for category ``atom_site``) is 'O1'.  We propose expanding
 this syntax to allow multiple key values to be specified:
-`<category>[name1=value1,name2=value2]` would specify the row of
-`<category>` for which category objects `name1` and `name2` take
-values of `value1` and `value2` respectively.
+``<category>[name1=value1,name2=value2]`` would specify the row of
+``<category>`` for which category objects ``name1`` and ``name2`` take
+values of ``value1`` and ``value2`` respectively.
 
 Explanation
 ~~~~~~~~~~~
@@ -74,14 +74,14 @@ Explanation
 ~~~~~~~~~~~
 
 If b.k1 and b.k2 are the keys of category B, and data names A.a1 and
-A.a2 are linked through `_name.linked_item_id` DDLm declarations to
-those keys, then any dREL method in category A can simply write `b.d3`
-to access a specific value of dataname d3 in category b.  This is
-equivalent to writing `b[k1=a.a1,k2=a.a2].d3` under proposal 3.
+A.a2 are linked through ``_name.linked_item_id`` DDLm declarations to
+those keys, then any dREL method in category A can simply write ``b.d3``
+to access a specific value of dataname ``d3`` in category ``b``.  This is
+equivalent to writing ``b[k1=a.a1,k2=a.a2].d3`` under proposal 3.
 
 Note that this short cut is not possible where more than one data name
-is linked to the same category key, for example, in `geom_bond`
-two data names are linked to `atom_site.label`.
+is linked to the same category key, for example, in ``geom_bond``
+two data names are linked to ``atom_site.label``.
 
 Note that partial resolution of data names is also possible, so that
 key references that are missing from the original form may be resolved
@@ -91,16 +91,16 @@ Discussion
 ----------
 
 The net result of the above two proposals is to make looping Set
-categories relatively painless. A dREL reference like `cell.vector_a`
+categories relatively painless. A dREL reference like ``cell.vector_a``
 may remain untouched when multiple cells are present, as long as the
 category within which the dREL method appears has only a single
-data name that is a child of the single key data name of `cell`.
+data name that is a child of the single key data name of ``cell``.
 
-However, in situations where the `<category>[value]` syntax has
-been used and `<category>` acquires a new key data name because
+However, in situations where the ``<category>[value]`` syntax has
+been used and ``<category>`` acquires a new key data name because
 some other category has become looped, dREL methods will need
 to be rewritten to explicitly specify the key data name that
-`value` corresponds to.  Going forward, the `[key=value]`
+``value`` corresponds to.  Going forward, the ``[key=value]``
 syntax should be preferred to minimise the need to rewrite
 methods in advanced looping applications.
 
