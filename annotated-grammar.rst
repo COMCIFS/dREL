@@ -184,11 +184,14 @@ Literals are either string literals or numbers ::
 Atoms
 -----
 
-An atom is either a literal, an identifier, or an enclosure ::
+We include a production for an identifier to allow generated parsers an entry point
+to manipulate the representation of the identifier. ::
 
-    atom = ID | literal | enclosure ;
-
-An enclosure is either a list, a table or a list of expressions enclosed in round brackets. ::
+    ident = ID ;
+    
+The fundamental building blocks of expressions are identifiers, literals and
+enclosures.  An enclosure is either a list, a table or a list of
+expressions enclosed in round brackets. ::
 
     enclosure = parenth_form | list_display | table_display ;
     parenth_form = LEFTPAREN expression_list RIGHTPAREN ;
@@ -196,22 +199,27 @@ An enclosure is either a list, a table or a list of expressions enclosed in roun
 A list is formed by comma-delimited expressions inside square brackets. ::
     
     list_display = LSQUAREB  expression_list RSQUAREB ;
-    expression_list = expression | ( expression_list COMMA expression ) ;
+    expression_list = expression { COMMA expression } ;
 
 A table is formed from a comma-delimited list of key:value pairs enclosed in braces.
 The key of a table may not span a line. ::
     
-    table_display = "{"  table_contents "}" ;
-    table_contents = table_entry | (table_contents "," table_entry ) ;
-    table_entry = SHORTSTRING  ":"  expression ;
+    table_display = LEFTBRACE  table_contents RIGHTBRACE ;
+    table_contents = table_entry { COMMA table_entry } ;
+    table_entry = SHORTSTRING  COLON  expression ;
 
 Primaries
 ---------
 
-A primary is the most tightly bound expression: either an atom by itself, an
-attribute reference, a subscription, or a function call. ::
+A primary is the most tightly bound expression: a literal, an
+enclosure, an attribute reference, a subscription, or a function
+call. In order to avoid ambiguities introduced by having real numbers
+also containing a period, which is also used for attribute references,
+we define a restricted subset of primaries for use with attribute
+references. ::
 
-    primary = atom | attributeref | subscription | call ;
+    att_primary = ident | attributeref | subscription | call ;
+    primary = att_primary | literal | enclosure ;
 
 An attribute reference of form `<cat>.<object>` is created from a
 primary followed by a period and string that identifies the object
@@ -221,9 +229,11 @@ identifiers and tokenised integers as candidates for `<object>`. An
 attribute reference returns the value of the data name defined by
 `<cat>.<object>` in the current row. It is an error to perform
 attribute access on a non-category type. It is also an error to perform
-attribute access when a specific row is not identifiable. ::
+attribute access when a specific row is not identifiable.  We use ``ID``
+in the grammar rule to indicate that that this item is not something
+that can be bound by the environment. ::
 
-    attributeref = primary  "."  ( ID | INTEGER ) ;
+    attributeref = att_primary "."  ( ID | INTEGER )  ;
 
 Square brackets are used to create a reference to an element in a list or
 category. If `primary` is a category object and the explicit dotlist
@@ -246,7 +256,7 @@ a proper slice or slice list as for Python (see below). ::
 
     subscription = primary  "["  (proper_slice | slice_list | dotlist)  "]" ;
     dotlist =  dotlist_element {"," dotlist_element } ;
-    dotlist_element = ("."  ID  "="  expression)
+    dotlist_element = ("."  ident  "="  expression)
     
 A slice is primary followed by a series of up to three expressions separated by colons
 and/or commas inside square brackets.  The expressions should evaluate to integers. When one
@@ -266,13 +276,12 @@ rather than the "first" element of `<category`.::
 `slice_lists` are composed of expressions and slices, where each entry
 in the list refers to a separate dimension of the sliced object.::
 
-    slice_list = slice_item | (slice_list  COMMA  slice_item) ;
-    slice_item = expression | proper_slice ;
+    slice_list = (expression | proper_slice) { COMMA (expression | proper_slice) } ;
     
 A function call is an identifier followed by round brackets enclosing a list of arguments
 to the function.::
 
-    call = ID  LEFTPAREN [expression_list] RIGHTPAREN ;
+    call = ident  LEFTPAREN [expression_list] RIGHTPAREN ;
 
 Operators
 ---------
@@ -362,9 +371,11 @@ called, although this is not recommended and may be deprecated. In the
 current core CIF this is used only in a demonstration validation function
 that calls an 'Alert' function.
 
+(old) small_statement = expression_list | assignment | dotlist_assign | BREAK | NEXT ;
+
 ::
 
-    small_statement = expression_list | assignment | dotlist_assign | BREAK | NEXT ;
+    small_statement = assignment | dotlist_assign | BREAK | NEXT ;
     assignment =  lhs augop rhs ;
     lhs = expression_list ;
     rhs = expression_list ;
@@ -374,7 +385,7 @@ multiple columns of a category object at the same time in the same row. Such ass
 may only be performed in methods appearing in category definitions. The
 production for `dotlist` is presented above in the Primaries section.::
 
-    dotlist_assign = ID "("  dotlist  ")" ;
+    dotlist_assign = ident "("  dotlist  ")" ;
     
 Compound statements contain other statements. dREL defines if, for, do, loop, with, repeat
 and function definition compound statements. ::
@@ -406,7 +417,7 @@ them in turn to the items in `id_list`. `id_list` can be optionally enclosed in
 square brackets. ::
 
     for_stmt = FOR  (id_list | "[" id_list "]")  IN  expression_list  suite ;
-    id_list = [id_list  ","]  ID ;
+    id_list = [id_list  ","]  ident ;
     
 `Loop a as b` iterates over rows of category `b`, assigning them to
 variable `a` and executing `suite`, which can then access the values
@@ -417,13 +428,18 @@ cond n` will only perform the iteration for a particular row if the
 condition `m cond n` is true. TODO: do we really need sequence
 numbers in loops given that there is no canonical order?
 
+The second ``ident`` cannot be replaced with a more liberal token (for example,
+``primary`` or ``call``) as it introduces reduce conflicts in the syntax:
+for example, is ``f(a,b)`` identifier ``f`` followed by enclosure (a,b), or
+a function call?
+
 ::
 
-    loop_stmt =  LOOP ID AS ID [":"  ID  [restricted_comp_operator  ID]] suite ;
+    loop_stmt =  LOOP ident AS ident [":"  ident  [restricted_comp_operator  ident]] suite ;
 
 Do statements perform simple loops in the same way as FOR statements. ::
 
-    do_stmt = DO ID  "=" expression  ","  expression  [","  expression] suite ;
+    do_stmt = DO ident  "=" expression  ","  expression  [","  expression] suite ;
 
 Repeat statements repeat the contents of `suite` until a `BREAK` statement is called. ::
 
@@ -432,14 +448,14 @@ Repeat statements repeat the contents of `suite` until a `BREAK` statement is ca
 With statements bind a local variable to a category variable (aliasing). This is
 required if a category name would be identical to a keyword. ::
 
-    with_stmt = WITH  ID  AS  ID  suite ;
+    with_stmt = WITH  ident  AS  ident  suite ;
 
 Each argument in a function definition argument list is followed by a list with two
 elements: the container type, and the type of the object in the container. ::
 
-    funcdef = FUNCTION  ID  "("  arglist  ")"  suite ;
+    funcdef = FUNCTION  ident  "("  arglist  ")"  suite ;
     arglist = one_arg | (arglist "," one_arg) 
-    one_arg = ID  ":"  "["  expression  ","  expression  "]" ;
+    one_arg = ident  ":"  "["  expression  ","  expression  "]" ;
 
 Complete dREL code
 ------------------

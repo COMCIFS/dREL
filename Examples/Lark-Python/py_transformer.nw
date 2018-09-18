@@ -16,7 +16,7 @@ Python code assuming the following environment:
 3. The CIF interactions are mediated by the pycifrw package. Other Python CIF modules
    should be pluggable.
    
-The transformer methods may assume that any interior nodes have already been processed.
+The transformer methods will assume that any interior nodes have already been processed.
 
 
 <<*>>=
@@ -57,20 +57,27 @@ class TreeToPy(Transformer):
 2. the name we wish to give the function
 3. the relevant dictionary for type and key information.
 
+If this method is to be used for arbitrary data names, the ``is_validation`` flag
+is set.  When set, the generated function is supplied with a further argument,
+the data name, and attributes from the dictionary are preset for this function.
+
 <<Initialise transformer>>=
-def __init__(self, dataname, func_name, cifdic):
+def __init__(self, dataname, func_name, cifdic, is_validation=False,att_dict={}):
     super().__init__()
     self.dic = cifdic
     self.func_name = func_name
     self.target_cat = self.dic[dataname]['_name.category_id']
     self.target_object = self.dic[dataname]['_name.object_id']
     self.is_func = self.dic[self.target_cat].get('_definition.class','') == 'Functions'
+    self.is_validation = is_validation
+    self.att_dict = att_dict  #DDLm attribute dictionary, validation only
     <<Internal use variables>>
 
 @         
 
 <<Internal use variables>>=
 self.cat_ids = set([])   #categories mentioned in the method
+self.ddlm_cats = set([]) #DDLm categories mentioned, validation only
 self.aug_assign_table = {"++=":"drel_runtime.aug_append",
                     "+=":"drel_runtime.aug_add",
                     "-=":"drel_runtime.aug_sub",
@@ -80,18 +87,29 @@ dREL top level
 ==============
 
 The final function body is output by concatenating the strings generated before,
-separated by newlines.::
+separated by newlines.  The header of the function will depend on whether or
+not it should be used for validation. ::
+
 <<Statements>>=
 def input(self,args):
     cat_string = "import numpy\nfrom CifFile.drel import drel_runtime\n"
+    cat_string = cat_string + "from validation_builtins import known,reference,instance,lookup,packetdata\n"
+    ddlm_string = ""
     if self.is_func:
         return cat_string + args[0]
     for c in self.cat_ids:
         cat_string = cat_string + "%s = CategoryObject(__datablock,'%s',__dict)\n" % (c,c)
-    header_code = "def %s(__datablock,__dict,__packet):" % self.func_name
+    for c in self.ddlm_cats:   #DDLm attributes
+        ddlm_string = ddlm_string + "%s = CategoryObject(__dict[__dataname],'%s',__ddldic)\n" % (c,c)
+    if self.is_validation:
+        header_code = "def %s(__datablock,__dict,__packet,__dataname,__ddldic):" % self.func_name
+    else:
+        header_code = "def %s(__datablock,__dict,__packet):" % self.func_name
     debug_string = "\nprint('" + "%s -> '),\n" % self.target_object
     debug_string += "print(__dreltarget)"
-    body = cat_string + args[0] + debug_string+"\nreturn __dreltarget"
+    body = cat_string
+    if self.is_validation: body = body + ddlm_string
+    body = body + args[0] + debug_string+"\nreturn __dreltarget"
     return header_code + add_indent("\n"+body)
 
 def statements(self,args):
@@ -125,26 +143,17 @@ def rhs(self,args):
     return v
 
 @
-Atoms and expressions
----------------------
+From literals to expressions
+----------------------------
 
 <<Atoms to expressions>>=
-def atom(self,args):
+def literal(self,args):
     # Pick up built-in literals
     v = args[0]
     if v.lower() == 'twopi':
         return "2.0*math.pi"
     elif v.lower() == 'pi':
         return "math.pi"
-    if hasattr(v,'type') and v.type == 'ID':
-        # remove initial underscores
-        if v[0] == '_':
-            v = v[1:]
-        # catch any category references
-        if v in self.dic.keys() and v != self.target_cat:
-            self.cat_ids.add(v)
-        if v == self.target_cat:
-            v = "__packet"
     return v
 
 # A real does not need to be followed by anything, so
@@ -155,10 +164,27 @@ def real(self,args):
     else:
         return args[0]+"."+args[1]
 
-def literal(self,args):
-    return _concat(args)
+def ident(self,args):
+    # remove initial underscores
+    v = args[0]
+    if v[0] == '_':
+        v = v[1:]
+    # catch any category references
+    if v in self.dic.keys() and v != self.target_cat:
+        self.cat_ids.add(v)
+    if v in self.att_dict.keys():
+        self.ddlm_cats.add(v)
+    if v == self.target_cat:
+        v = "__packet"
+    return v
 
 def enclosure(self,args):
+    return _concat(args)
+
+def att_primary(self,args):
+    return _concat(args)
+
+def primary(self,args):
     return _concat(args)
 
 def arith(self,args):
@@ -318,16 +344,12 @@ def do_stmt(self,args):
 
 def loop_stmt(self,args):
     # TODO: the fancy stuff
-    start = "for %s in CategoryObject(__datablock,'%s',__dict):" % (args[1],args[3])
+    start = "for %s in %s:" % (args[1],args[3])
     return start + add_indent("\n"+args[-1])
 
 def with_stmt(self,args):
-    if args[3] == self.target_cat:
-        withstr = "%s = __packet" % args[1]
-        withstr = withstr + "\n" + args[-1]
-    else:
-        raise(ValueError,"Only current category can be aliased with 'WITH': given %s, expected %s" %
-              (args[3],self.target_cat))
+    withstr = "%s = %s" % (args[1],args[3])
+    withstr = withstr + "\n" + args[-1] #not indented
     return withstr
 
 # An if stmt may have 'elseif' as the second argument.
@@ -345,7 +367,7 @@ def else_if_stmt(self,args):
 
 @ 
 Functions.  A function call may invoke a built-in function, so we have
-to convert these to know python functions.
+to convert these to known python functions.
 
 <<Functions>>=
 def call(self,args):
@@ -704,6 +726,13 @@ def get_function_name(in_name):
         return "","",".sort()"
     if test_name == 'current_row':
         return "","",".__current_row()"
+    # These are our validation builtins
+    if test_name in ('known','instance'):
+        return test_name,"__dict,__datablock,",""
+    if test_name == 'reference':
+        return test_name,"__dict,",""
+    if test_name in ('packetdata','lookup'):
+        return test_name,"",""
     return in_name,"",""   #dictionary defined
 
 @  Mathematical operations in dREL are complicated by the need to handle matrix
@@ -725,3 +754,36 @@ def fix_mathops(op,first_arg,second_arg):
     elif op == "/":
         return "numpy.true_divide(%s,%s)" % (first_arg, second_arg)
 
+@ Validation functions
+
+These functions should appear in the namespace of any dREL methods that
+handle validation.  The current setup extracts them to a separate local
+python file that is imported.
+
+<<Validation_functions>>=
+from py_transformer import CategoryObject
+
+def reference(dictionary,name,attribute):
+    """Return the value of ``attribute`` in the ``dictionary`` definition of
+    ``name``."""
+    return dictionary[name][attribute]
+
+def instance(dictionary,datablock,category):
+    """Return a category object corresponding to the category provided"""
+    return CategoryObject(datablock,category,dictionary)
+
+def packetdata(container,object):
+    return getattr(container,object)
+
+def lookup(category,keys):
+    """Return a single row from category for which the keys take the
+    values provided in ``keys``."""
+    return category[keys]
+
+def known(dictionary,datablock,name):
+    """Return true if a value for name can be found"""
+    try:
+        datablock[name]
+        return True
+    except KeyError:
+        return False
