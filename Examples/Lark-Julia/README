@@ -1,0 +1,2 @@
+This directory uses the python Lark grammar processor to generate Julia code fragments. It relies on a
+JuliaCif Julia module for data and dictionary access.
