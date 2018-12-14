@@ -1,6 +1,7 @@
 using Test
 using JuliaCif
 using PyCall
+using DataFrames
 
 # And get our Python stuff
 
@@ -13,9 +14,9 @@ pushfirst!(PyVector(pyimport("sys")["path"]), "")
 
 ## Configuration for what is to come...
 
-grammar_file = "lark_grammar.ebnf"
-dic_file = "/home/jrh/COMCIFS/cif_core/cif_core.dic"
-ddlm_dic = "/home/jrh/COMCIFS/cif_core/ddl.dic"
+const grammar_file = "lark_grammar.ebnf"
+const dic_file = "/home/jrh/COMCIFS/cif_core/cif_core.dic"
+const ddlm_dic = "/home/jrh/COMCIFS/cif_core/ddl.dic"
 
 lark_grammar() = begin
     grammar_text = read(joinpath(@__DIR__,grammar_file),String)
@@ -29,13 +30,14 @@ end
 
 full_on_transformer(dname,dict) = begin
     # get out the information to pass to python
-    target_cat = String(dict[dname]["_name.category_id"])
-    target_obj = String(dict[dname]["_name.object_id"])
+    println("Now transforming $dname using definition $(dict[dname])")
+    target_cat = String(dict[dname]["_name.category_id"][1])
+    target_obj = String(dict[dname]["_name.object_id"][1])
     is_func = false
-    if String(get(dict[dname],"_definition.class","Datum")) == "Function"
+    if String(get(dict[dname],"_definition.class",["Datum"])[1]) == "Function"
         is_func = true
     end
-    catlist = [a for a in keys(dict) if String(get(dict[a],"_definition.scope","Item")) == "Category"]
+    catlist = [a for a in keys(dict) if String(get(dict[a],"_definition.scope",["Item"])[1]) == "Category"]
     tt = jl_transformer.TreeToPy(dname,"myfunc",target_cat,target_obj,catlist,is_func=is_func)
 end
 
@@ -44,8 +46,8 @@ get_cifdic() = begin
 end
 
 get_drel_methods(cd) = begin
-    has_meth = [n for n in cd if "_method.expression" in keys(n) && String(get(n,"_definition.scope","Item")) != "Category"]
-    meths = [(String(n["_definition.id"]),get_loop(n,"_method.expression")) for n in has_meth]
+    has_meth = [n for n in cd if "_method.expression" in keys(n) && String(get(n,"_definition.scope",["Item"])[1]) != "Category"]
+    meths = [(String(n["_definition.id"][1]),get_loop(n,"_method.expression")) for n in has_meth]
     println("Found $(length(meths)) methods")
     return meths
 end
@@ -56,58 +58,30 @@ process_a_phrase(phrase::AbstractString,parser,transformer=nothing) = begin
     tokens = parser[:lex](phrase)
     tree = parser[:parse](phrase,debug=false)
     x = ""
+    aliases = ""
     if !(transformer == nothing)
-        x = transformer[:transform](tree)
+        tc_aliases,x = transformer[:transform](tree)
         end
     println(x)
-    return x,transformer
+    return x,tc_aliases,transformer
 end
 
-evaluate_a_phrase(phrase,transformer) = begin
+parse_a_phrase(phrase,transformer) = begin
     parser = lark_grammar()
     println("==================\nProcessing:")
     println(phrase)
-    x,t = process_a_phrase(phrase,parser,transformer)
+    x,aliases,t = process_a_phrase(phrase,parser,transformer)
     println("-------------------\n")
     println(x*"\n==================")
-    Meta.parse(x)
-    println("Parsing successful")
-end
-        
-@testset "Syntax checking" begin
-    @test begin
-        phrase = "_a = 0"
-        evaluate_a_phrase(phrase,simple_transformer())
-        true
+    parsed = Meta.parse(x)
+    if aliases != ""  #the target category was aliased Aaaargh!
+        parsed = find_target(parsed,aliases,transformer[:target_object])
+        println("-----------------")
+        println(parsed)
     end
-    @test begin
-        phrase = "With c as return
-    return.value = Acosd(
-    (Cosd(c.angle_beta)*Cosd(c.angle_gamma)-Cosd(c.angle_alpha))/(Sind(c.angle_beta)*Sind(c.angle_gamma)))"
-        evaluate_a_phrase(phrase,simple_transformer())
-        true
-    end
-    @test begin
-        phrase = "b = 'uani'"
-        evaluate_a_phrase(phrase,simple_transformer())
-        true
-    end
+    return parsed
 end
 
-@testset "Dictionary syntax runthrough" begin
-    d = get_cifdic()
-    meths = get_drel_methods(d)
-    for one_meth in meths
-        dname,meth_loop = one_meth
-        println("$dname")
-        for one_pack in meth_loop
-            if String(one_pack["_method.purpose"])=="Evaluation"
-                meth_text = String(one_pack["_method.expression"])
-                @test begin
-                    evaluate_a_phrase(meth_text,full_on_transformer(dname,d))
-                    true
-                end
-            end
-        end
-    end
-end
+#include("syntax_checks.jl")
+include("semantic_checks.jl")
+

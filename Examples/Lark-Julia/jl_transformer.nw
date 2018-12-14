@@ -57,7 +57,7 @@ is set.  When set, the generated function is supplied with a further argument,
 the data name, and attributes from the dictionary are preset for this function.
 
 As this is called from Julia, we cannot pass complex objects (such as a cifdic) as
-the object wrapping is not that fancy.
+the Julia -> Python object wrapping is not that fancy.
 
 <<Initialise transformer>>=
 def __init__(self, dataname, func_name, target_cat, target_obj, cat_list,
@@ -76,6 +76,7 @@ def __init__(self, dataname, func_name, target_cat, target_obj, cat_list,
 
 <<Internal use variables>>=
 self.cat_ids = set([])   #categories mentioned in the method
+self.target_category_alias = target_cat #
 self.ddlm_cats = set([]) #DDLm categories mentioned, validation only
 self.aug_assign_table = {"++=":"julia-fixme",
                     "+=":"julia-fixme",
@@ -92,7 +93,7 @@ not it should be used for validation. ::
 
 <<Statements>>=
 def input(self,args):
-    cat_string = "using JuliaCif\nusing JuliaDrel\n"
+    cat_string = "# Transform for (%s,%s)\n" % (self.target_cat,self.target_object)
     ddlm_string = ""
     if self.is_func:
         return cat_string + args[0]
@@ -109,7 +110,9 @@ def input(self,args):
     body = cat_string
     if self.is_validation: body = body + ddlm_string
     body = body + args[0] + debug_string+"\nreturn __dreltarget\nend"
-    return header_code + add_indent("\n"+body)  #leave the indent for nice layout
+    if self.target_category_alias == self.target_cat:
+        self.target_category_alias = ""
+    return self.target_category_alias,header_code + add_indent("\n"+body)  #leave the indent for nice layout
 
 def statements(self,args):
     return _concat(args,"\n")
@@ -212,6 +215,8 @@ def primary(self,args):
     return _concat(args)
 
 def arith(self,args):
+    if len(args)>1:
+        return fix_mathops(args[1],args[0],args[2])
     return _concat(args)
 
 def power(self,args):
@@ -301,14 +306,19 @@ calling function.
 
 The packet object can be annotated later using Julia metaprogramming.
 
+We are unlikely to catch aliases here, as attribute references will
+be processed before the enclosing block containing the with statement.
+
 <<Attributes>>=
 def attributeref(self,args):
     #TODO: all of the dREL-specific behaviour, guessing keys etc.
-    if args[0] == '__packet' and args[1] == self.target_object:
+    print("ATTRIBUTEREF: passed %s.%s" % (args[0],args[1]))
+    if (args[0] == '__packet' or args[0] == self.target_category_alias) \
+        and args[1] == self.target_object:
         return "__dreltarget"
     else:
-        return args[0] + "[" + args[1] +"]"
-
+        return args[0] + '[Symbol(lowercase("' + args[1] +'"))]'
+    
 @ Lists and tables: TODO JULIA
     
 <<Lists and tables>>=
@@ -366,7 +376,7 @@ def repeat_stmt(self,args):
     os = "while true" + add_indent("\n" + args[1]) + '\nend'
     return os
 
-# args[1] might be a list. Julia doesnt seem to support assigning
+# args[1] might be a list. Julia doesn't seem to support assigning
 # to a list in a for statement header, so we insert the assignment
 # at the beginning of the suite.
 def for_stmt(self,args):
@@ -395,8 +405,13 @@ def loop_stmt(self,args):
     return start + add_indent("\n"+args[-1]+'\nend')
 
 def with_stmt(self,args):
+    print("WITH: %s" % repr(args))
     withstr = "%s = %s" % (args[1],args[3])
     withstr = withstr + "\n" + args[-1] #not indented
+    # note if target category is being renamed
+    if args[3] == "__packet":  #renamed to this at ident stage
+        self.target_category_alias = args[1]
+        print("Renamed target category to %s" % self.target_category_alias)
     return withstr
 
 # An if stmt may have 'elseif' as the second argument.
@@ -537,7 +552,7 @@ def get_function_name(in_name):
     if test_name == 'matrix':
         return "Matrix{Float64}","",""
     if test_name == 'sort':
-        return "","",".sort()"
+        return "sort!","",""
     if test_name == 'current_row':
         return "","",".__current_row()"
     # These are our validation builtins
@@ -549,24 +564,19 @@ def get_function_name(in_name):
         return test_name,"",""
     return in_name,"",""   #dictionary defined
 
-@  Mathematical operations in dREL are complicated by the need to handle matrix
-operations transparently.  The two operators that are affected are "^" (cross
-product) and "*" (matrix multiplication).
+@
+    Mathematical operations. The two operators that are provided in
+    the syntax are "^" (cross product) and "*" (matrix multiplication).
 
 <<Mathematical operations>>=
 def fix_mathops(op,first_arg,second_arg):
     """Return a string that will carry out the requested operation"""
     if op == "^":
-        return "numpy.cross(%s,%s)" % (first_arg,second_arg)
+        return "LinearAlgebra.cross(%s,%s)" % (first_arg,second_arg)
     elif op == "*":  #could be matrix multiplication
-        return "drel_runtime.drel_dot(%s,%s)" % (first_arg,second_arg)
-    elif op == "+":
-        return "drel_runtime.drel_add(%s,%s)" % (first_arg, second_arg)
-    elif op == "-":
-        return "numpy.subtract(%s,%s)" % (first_arg, second_arg)
-    # beware integer division on this one...
-    elif op == "/":
-        return "numpy.true_divide(%s,%s)" % (first_arg, second_arg)
+        return "LinearAlgebra.dot(%s,%s)" % (first_arg,second_arg)
+    else: #no change
+        return "%s %s %s" % (first_arg,op,second_arg)
 
 @
 In Julia we can annotate type after any variable. This type is then used to
