@@ -96,7 +96,7 @@ def input(self,args):
     cat_string = "# Transform for (%s,%s)\n" % (self.target_cat,self.target_object)
     ddlm_string = ""
     if self.is_func:
-        return cat_string + args[0]
+        return "",cat_string + args[0]
     for c in self.cat_ids:
         cat_string = cat_string + '%s = CategoryObject(__datablock,"%s",__dict)\n' % (c,c)
     for c in self.ddlm_cats:   #DDLm attributes
@@ -239,7 +239,13 @@ def restricted_comp_operator(self,args):
 def comp_operator(self,args):
     return _concat(args," ")
 
+# We have to catch "not in" and move the
+# not operator to the outside
+
 def comparison(self,args):
+    if len(args)>1:
+        if (args[1][:3]).lower() == "not":
+            return _concat(["!(",args[0],args[1][3:],args[2],")"]," ")
     return _concat(args," ")
 
 def not_test(self,args):    
@@ -319,26 +325,46 @@ def attributeref(self,args):
     else:
         return args[0] + '[Symbol(lowercase("' + args[1] +'"))]'
     
-@ Lists and tables: TODO JULIA
+@ Lists and tables.
+
+Julia, bless its cotton socks, indexes from 1. We rely on a Julia
+macro provided with JuliaCif to insert index corrections in the
+appropriate places. Also, the second element in a three-element
+slice is the step, unlike Python or dREL, for which it is the end, so
+we swap things around below.
+
+TODO Julia: row/column major indexing...do we need to swap stuff?
     
 <<Lists and tables>>=
 def slicing(self,args):
     return _concat(args)
 
+# this is where we work out whether or not we had a step in there
+# We are passed a single argument containing the results of the
+# short or long slices. We retain zero-based indexing in anticipation
+# of the Julia macros catching and fixing stuff.
+
 def proper_slice(self,args):
-    return args[0]
+    step = args[0].get("step","1")
+    return args[0]["start"]+":"+step+":"+args[0]["stop"]
 
 def short_slice(self,args):
-    return _concat(args)
+    if len(args)==1: # a colon
+        return {"start":"0","stop":"end"}    #meaning identical in Julia
+    if len(args) == 3:    #start, end
+        return {"start":args[0],"stop":args[2]}
+    elif len(args) == 2 and args[0]==":":
+        return {"start":"0","stop":args[1]}
+    else:
+        return {"start":args[0],"stop":"end"}
 
 def long_slice(self,args):
-    return _concat(args)
+    # args[0] is a dictionary
+    args[0].update({"step":args[1]})
+    return args[0]
 
 def slice_list(self,args):
     return _concat(args)
-
-def slice_item(self,args):
-    return args[0]
 
 def list_display(self,args):
     return _concat(args)
@@ -404,14 +430,15 @@ def loop_stmt(self,args):
     start = "for %s in %s" % (args[1],args[3])
     return start + add_indent("\n"+args[-1]+'\nend')
 
+# Our alias may apply to a packet or another category
 def with_stmt(self,args):
     print("WITH: %s" % repr(args))
     withstr = "%s = %s" % (args[1],args[3])
-    withstr = withstr + "\n" + args[-1] #not indented
-    # note if target category is being renamed
-    if args[3] == "__packet":  #renamed to this at ident stage
+    if args[3] != "__packet":
+        withstr = withstr + "::CategoryObject"
+    else:   #our target category
         self.target_category_alias = args[1]
-        print("Renamed target category to %s" % self.target_category_alias)
+    withstr = withstr + "\n" + args[-1] #not indented
     return withstr
 
 # An if stmt may have 'elseif' as the second argument.

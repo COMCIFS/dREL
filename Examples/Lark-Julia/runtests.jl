@@ -34,7 +34,7 @@ full_on_transformer(dname,dict) = begin
     target_cat = String(dict[dname]["_name.category_id"][1])
     target_obj = String(dict[dname]["_name.object_id"][1])
     is_func = false
-    if String(get(dict[dname],"_definition.class",["Datum"])[1]) == "Function"
+    if String(get(dict[target_cat],"_definition.class",["Datum"])[1]) == "Functions"
         is_func = true
     end
     catlist = [a for a in keys(dict) if String(get(dict[a],"_definition.scope",["Item"])[1]) == "Category"]
@@ -52,7 +52,7 @@ get_drel_methods(cd) = begin
     return meths
 end
 
-process_a_phrase(phrase::AbstractString,parser,transformer=nothing) = begin
+process_a_phrase(phrase::String,parser,transformer=nothing) = begin
     println("=========")
     println(phrase)
     tokens = parser[:lex](phrase)
@@ -73,12 +73,12 @@ parse_a_phrase(phrase,transformer) = begin
     x,aliases,t = process_a_phrase(phrase,parser,transformer)
     println("-------------------\n")
     println(x*"\n==================")
-    parsed = Meta.parse(x)
+    parsed = ast_fix_indexing(Meta.parse(x),Symbol.(["__packet"]))
     if aliases != ""  #the target category was aliased Aaaargh!
         parsed = find_target(parsed,aliases,transformer[:target_object])
-        println("-----------------")
-        println(parsed)
     end
+    println("-----------------")
+    println(parsed)
     return parsed
 end
 
