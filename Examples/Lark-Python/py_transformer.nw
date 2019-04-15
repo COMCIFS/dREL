@@ -489,7 +489,7 @@ class CategoryObject(object):
         if not self.__is_looped:
             print("Not looped: %s" % self.__catname)
             yield self['dummy']
-            raise(StopIteration)
+            return
         # for efficiency
         for pack_no in range(len(self)):
             def get_packet_value(object_id):
@@ -497,7 +497,7 @@ class CategoryObject(object):
                 return self.__datablock[dataname][pack_no]
             yield Packet(get_packet_value,pack_no)
         print("Finished iteration over %s" % self.__catname)
-        raise(StopIteration)
+        return
             
     def __str__(self):
         outdict = {"name":self.__catname}
