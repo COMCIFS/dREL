@@ -2,6 +2,7 @@ using Test
 using JuliaCif
 using PyCall
 using DataFrames
+include("drel_runtime.jl")
 
 # And get our Python stuff
 
@@ -33,12 +34,20 @@ full_on_transformer(dname,dict) = begin
     println("Now transforming $dname using definition $(dict[dname])")
     target_cat = String(dict[dname]["_name.category_id"][1])
     target_obj = String(dict[dname]["_name.object_id"][1])
+    func_cat = [a for a in keys(dict) if String(get(dict[a],"_definition.class",["Datum"])[1]) == "Functions"]
+    if length(func_cat) > 0
+        func_catname = lowercase(String(dict[func_cat[1]]["_name.object_id"][1]))
+        all_funcs = [a for a in keys(dict) if lowercase(String(dict[a]["_name.category_id"][1])) == func_catname]
+        all_funcs = lowercase.([String(dict[a]["_name.object_id"][1]) for a in all_funcs])
+    else
+        all_funcs = []
+    end
     is_func = false
-    if String(get(dict[target_cat],"_definition.class",["Datum"])[1]) == "Functions"
+    if lowercase(target_cat) in lowercase.(func_cat)
         is_func = true
     end
     catlist = [a for a in keys(dict) if String(get(dict[a],"_definition.scope",["Item"])[1]) == "Category"]
-    tt = jl_transformer.TreeToPy(dname,"myfunc",target_cat,target_obj,catlist,is_func=is_func)
+    tt = jl_transformer.TreeToPy(dname,"myfunc",target_cat,target_obj,catlist,is_func=is_func,func_list=all_funcs)
 end
 
 get_cifdic() = begin
@@ -77,11 +86,12 @@ parse_a_phrase(phrase,transformer) = begin
     if aliases != ""  #the target category was aliased Aaaargh!
         parsed = find_target(parsed,aliases,transformer[:target_object])
     end
+    parsed = fix_scope(parsed)
     println("-----------------")
     println(parsed)
     return parsed
 end
 
 #include("syntax_checks.jl")
-include("semantic_checks.jl")
-
+#include("semantic_checks.jl")
+include("current_test.jl")
