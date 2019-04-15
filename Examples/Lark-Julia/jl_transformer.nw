@@ -61,7 +61,7 @@ the Julia -> Python object wrapping is not that fancy.
 
 <<Initialise transformer>>=
 def __init__(self, dataname, func_name, target_cat, target_obj, cat_list,
-             is_func = False, is_validation=False,att_dict={}):
+             is_func = False, is_validation=False,att_dict={},func_list=[]):
     super().__init__()
     self.func_name = func_name
     self.target_cat = target_cat
@@ -70,6 +70,7 @@ def __init__(self, dataname, func_name, target_cat, target_obj, cat_list,
     self.is_validation = is_validation
     self.cat_list = [a.lower() for a in cat_list]
     self.att_dict = att_dict  #DDLm attribute dictionary, validation only
+    self.func_list = func_list
     <<Internal use variables>>
 
 @         
@@ -79,8 +80,6 @@ self.cat_ids = set([])   #categories mentioned in the method
 self.target_category_alias = target_cat #
 self.ddlm_cats = set([]) #DDLm categories mentioned, validation only
 self.aug_assign_table = {"++=":"julia-fixme",
-                    "+=":"julia-fixme",
-                    "-=":"julia-fixme",
                     "--=":"julia-fixme"}
 
 @ 
@@ -98,15 +97,15 @@ def input(self,args):
     if self.is_func:
         return "",cat_string + args[0]
     for c in self.cat_ids:
-        cat_string = cat_string + '%s = CategoryObject(__datablock,"%s",__dict)\n' % (c,c)
+        cat_string = cat_string + '%s = CategoryObject(__datablock,"%s")\n' % (c,c)
     for c in self.ddlm_cats:   #DDLm attributes
-        ddlm_string = ddlm_string + '%s = CategoryObject(__dict[__dataname],"%s",__ddldic)\n' % (c,c)
+        ddlm_string = ddlm_string + '%s = CategoryObject(__dict[__dataname],"%s")\n' % (c,c)
     if self.is_validation:
         header_code = '%s(__datablock,__dict,__packet,__dataname,__ddldic) = begin' % self.func_name
     else:
         header_code = "%s(__datablock,__dict,__packet) = begin" % self.func_name
-    debug_string = '\nprint("' + '%s -> ")\n' % self.target_object
-    debug_string += "print(__dreltarget)"
+    debug_string = '\nprint("' + '%s -> ")' % self.target_object
+    debug_string += "println(__dreltarget)"
     body = cat_string
     if self.is_validation: body = body + ddlm_string
     body = body + args[0] + debug_string+"\nreturn __dreltarget\nend"
@@ -128,7 +127,7 @@ def small_statement(self,args):
 
 #TODO: analyse LHS/RHS information
 def assignment(self,args):
-    if args[1] == "=":   #simple assignment
+    if args[1] in ["=","+=","-="]: 
         return _concat(args)
     else: #call runtime functions
         operator = self.aug_assign_table[args[1]]
@@ -149,7 +148,10 @@ From literals to expressions
 ----------------------------
 
 Julia recognises only double quotes as string delimiters, so we
-must remove any incidences of single quotes.
+must remove any incidences of single quotes. Also, Julia has
+characters as well as strings, and does not accept that 'a' (a
+character) is equal to "a" (a string). TODO: perhaps redefine
+equality?
 
 <<Atoms to expressions>>=
 def literal(self,args):
@@ -166,6 +168,7 @@ def literal(self,args):
         # escape internal quotes
         v = re.sub(r'"','\\"',v)
         v = '"' + v[1:-1] + '"'
+    
     return v
 
 # A real does not need to be followed by anything, so
@@ -312,8 +315,10 @@ calling function.
 
 The packet object can be annotated later using Julia metaprogramming.
 
-We are unlikely to catch aliases here, as attribute references will
+We are unlikely to catch category aliases here, as attribute references will
 be processed before the enclosing block containing the with statement.
+The syntax ``a.b'' is mapped to the 'getproperty' call in Julia, which
+works with data frames, so we need not touch anything.
 
 <<Attributes>>=
 def attributeref(self,args):
@@ -323,7 +328,7 @@ def attributeref(self,args):
         and args[1] == self.target_object:
         return "__dreltarget"
     else:
-        return args[0] + '[Symbol(lowercase("' + args[1] +'"))]'
+        return "("+args[0] + '.' + args[1].lower()+")"
     
 @ Lists and tables.
 
@@ -456,10 +461,22 @@ def else_if_stmt(self,args):
 
 @ 
 Functions.  A function call may invoke a built-in function, so we have
-to convert these to known python functions.
+to convert these to known python functions. However, list/array construction
+in Julia is accomplished simply by using square brackets, so we special-case
+these functions.
 
 <<Functions>>=
 def call(self,args):
+    # Catch list / array constructors
+    print("Function call: " + args[0])
+    if args[0].lower() in ["list","array"]:
+        if len(args) == 3:
+            return " []"
+        else:
+            return " [" +args[2]+ "] "
+    # Catch dictionary-defined functions
+    if args[0].lower() in self.func_list:
+        return args[0]+"(" + args[2] + ",__datablock)"
     before,middle,after = get_function_name(args[0])
     if len(args) == 3:
         fstr = before + "(" + middle + ")" + after #no arguments
@@ -467,8 +484,12 @@ def call(self,args):
         fstr = before + "(" + middle + args[2] + ")" + after
     return fstr
 
+# A function definition will be a standalone function, so we insert
+# our category calls here
 def funcdef(self,args):
-    fstr = args[1]+"("+args[2]+")"+"= begin"
+    fstr = args[1]+"("+args[2]+",__datablock)"+"= begin\n"
+    for c in self.cat_ids:
+        fstr = fstr + '%s = CategoryObject(__datablock,"%s")\n' % (c,c)
     fstr += add_indent("\n"+args[-1]+"\nreturn %s" % args[1]) + '\nend'
     return fstr
 
@@ -476,7 +497,7 @@ def arglist(self,args):
     return _concat(args)
 
 def one_arg(self,args):
-    return args[0]   #no type information needed in Python
+    return args[0]   #TODO: add Julia type information
 
 
 
@@ -521,10 +542,12 @@ def add_type(cifdic,dicname):
 <<Mathematical operations>>
 <<Type annotations>>
 
-@ We call out to this function
-in order to find out what the Julian name of the given function is.  Where we have
-to provide our own function, that is also listed.  Note that this only works for
-unary functions.
+@ We call out to this function in order to find out what the Julian
+name of the given function is.  Where we have to provide our own
+function, that is also listed.  Note that this only works for unary
+functions.  We provide the broadcast versions of Julia functions where
+possible, in keeping with the dREL convention that functions can apply
+to matrices and lists.
 
 We force all matrices to be 64-bit floats.  If you check SeitzFromJones, you will
 find a matrix that defaults to integer type, meaning that any assignments of float
@@ -533,11 +556,9 @@ this mean for Julia??
 
 <<Function transformer>>=
 def get_function_name(in_name):
-    """Return the Python name of the dREL function, an argument prefix,
+    """Return the Julia name of the dREL function, an argument prefix,
        and anything to be appended to the end"""
     builtins = {"table":"Dict",
-                "list":"Array{Any}",
-                "array":"Array",
                 "len":"length",
                 "abs":"abs",
                 "magn":"abs",
@@ -548,8 +569,8 @@ def get_function_name(in_name):
                 "complex":"complex",
                 "max":"max",
                 "min":"min",
+                "float":"Float64",
                 "strip":"drel_strip",
-                "int":"drel_int",
                 "eigen":"drel_eigen",
       "sind":"sind",
       "cosd":"cosd",
@@ -557,17 +578,19 @@ def get_function_name(in_name):
       "asind":"asind",
       "acosd":"acosd",
       "atand":"atand",
+                "mod":"mod.",
+                "repr":"string"
     }
     test_name = in_name.lower()
     target_name = builtins.get(test_name,None)
     if target_name is not None:
         return target_name,"",""
-    if test_name == "mod":
-        return "divmod","","[1]"
+    if test_name == "matrix":  #custom Julia creation
+        return "to_julia_array","","[1]"  #zero-based indexing at this stage
     if test_name == "atoi":
-        return "parse","Int",""
-    if test_name == "float":
-        return "parse","Float",""
+        return "parse","Int,",""
+    if test_name == "int":
+        return "floor.","Int64,",""
     if test_name == "upper":
         return "","",".upper()"
     if test_name == "transpose":
@@ -576,8 +599,6 @@ def get_function_name(in_name):
         return "cmath.exp","1j*(",")"
     if test_name in ['real','imag']:
         return "","","." + test_name
-    if test_name == 'matrix':
-        return "Matrix{Float64}","",""
     if test_name == 'sort':
         return "sort!","",""
     if test_name == 'current_row':
@@ -600,10 +621,10 @@ def fix_mathops(op,first_arg,second_arg):
     """Return a string that will carry out the requested operation"""
     if op == "^":
         return "LinearAlgebra.cross(%s,%s)" % (first_arg,second_arg)
-    elif op == "*":  #could be matrix multiplication
+    elif op == "*":  #could be matrix multiplication...or not
         return "LinearAlgebra.dot(%s,%s)" % (first_arg,second_arg)
-    else: #no change
-        return "%s %s %s" % (first_arg,op,second_arg)
+    elif op in "+-/": #turn into broadcasted equivalents
+        return "%s %s %s" % (first_arg," ."+op,second_arg)
 
 @
 In Julia we can annotate type after any variable. This type is then used to
