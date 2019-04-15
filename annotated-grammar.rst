@@ -20,6 +20,8 @@ have been included that may require approval from COMCIFS.  In particular:
    language presented in the paper does not need newlines in order to
    remove ambiguity.
 
+4. Literal 'missing' ('?') and 'null' have been added to the language
+
 The EBNF used here differs from the ISO standard as follows:
 
 1. Sequences of characters may be presented as single strings
@@ -112,6 +114,8 @@ Literals
     OCTINT = /0o[0-7]+/
     HEXINT = /0x[0-9A-Fa-f]+/
     BININT = /0b[0-1]+/
+    MISSING = "?"
+    NULL = "NULL"
 
 A real number must contain a decimal point, and may be
 optionally followed by an exponent after the letter "E". A digit before the
@@ -177,9 +181,9 @@ appear in expressions which are structured into statements.
     
 Literals
 --------
-Literals are either string literals or numbers ::
+Literals are either string literals, numbers, missing or null ::
 
-    literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | real | imaginary ;
+    literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | NULL | MISSING | real | imaginary ;
     
 Atoms
 -----
@@ -454,7 +458,7 @@ Each argument in a function definition argument list is followed by a list with 
 elements: the container type, and the type of the object in the container. ::
 
     funcdef = FUNCTION  ident  "("  arglist  ")"  suite ;
-    arglist = one_arg | (arglist "," one_arg) 
+    arglist = one_arg | (arglist COMMA one_arg) 
     one_arg = ident  ":"  "["  expression  ","  expression  "]" ;
 
 Complete dREL code
