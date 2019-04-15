@@ -202,7 +202,7 @@ expressions enclosed in round brackets. ::
 
 A list is formed by comma-delimited expressions inside square brackets. ::
     
-    list_display = LSQUAREB  expression_list RSQUAREB ;
+    list_display = LSQUAREB  [ expression_list ] RSQUAREB ;
     expression_list = expression { COMMA expression } ;
 
 A table is formed from a comma-delimited list of key:value pairs enclosed in braces.

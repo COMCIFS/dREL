@@ -15,6 +15,7 @@ ddlm_dic = "/home/jrh/COMCIFS/cif_core/ddl.dic"
 frag_collection = {}
 
 frag_collection["assign"] = "_a = 0"
+frag_collection["empty_list"] = " a = [] "
 frag_collection["brackets"] = """With c as return
  
     return.value = Acosd(
@@ -136,7 +137,7 @@ def process_a_phrase(phrase,parser,transformer=None):
     print(phrase)
     #print("Tokens:")
     tokens = parser.lex(phrase)
-    tree = parser.parse(phrase,debug=False)
+    tree = parser.parse(phrase)
     #print(tree.pretty())
     if transformer is not None:
         x = transformer.transform(tree)
@@ -161,6 +162,10 @@ class TestGrammar(object):
     def test_list(self,lark_grammar,pytransformer):
         v = execute_a_phrase("c=[1,2,3,4] return.val=c[0]+c[2]",lark_grammar,pytransformer,{})
         assert v == [4]
+
+    def test_empty_list(self,lark_grammar,pytransformer):
+        v = execute_a_phrase("c = [] return.val = c",lark_grammar,pytransformer,{})
+        assert v == [[]]
 
     def test_matrix(self,lark_grammar,pytransformer):
         v = execute_a_phrase(frag_collection["matrix"],lark_grammar,pytransformer,{})
