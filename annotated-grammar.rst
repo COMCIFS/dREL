@@ -271,7 +271,7 @@ the slice step.
 There is no ambiguity in the use of square brackets for slicing and
 subscription, as category objects have no predefined ordering and therefore `<category>[0]`
 must refer to the row of `<category>` for which the key data name is equal to 0,
-rather than the "first" element of `<category`.::
+rather than the "first" element of `<category`>::
 
     proper_slice = short_slice | long_slice ;
     short_slice = COLON | (expression  COLON  expression) | (COLON expression) | (expression  COLON) ;
@@ -293,7 +293,7 @@ Operators
 Operators act on primaries.
 The power operator raises the primary to the power of the second expression,
 which is essentially a signed power expression.
-TODO: check that precendence is actually correct. ::
+TODO: check that precedence is actually correct. ::
 
     power = primary  [ PWR  factor ] ;
     
