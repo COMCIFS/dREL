@@ -131,7 +131,7 @@ An imaginary number is a real or integer followed by the letter "j". ::
     imaginary = (real | INTEGER) ("j"|"J")
 
 A longstring is enclosed in triple quotes or triple double quotes, and
-may contain newline characters. TODO: check that backslashes work properly.::
+may contain newline characters. TODO: check that backslashes work properly. ::
 
     LONGSTRING = /'''[^\\][.\n]*'''|"""[^\\][.\n]*"""/
     SHORTSTRING = /'[^']*'|"[^"]*"/
@@ -140,7 +140,7 @@ Keywords.
 ~~~~~~~~~
 
 These are case insensitive, but for brevity this has not been
-made explicit.::
+made explicit. ::
 
     AND = "and"
     OR = "or"
@@ -181,7 +181,7 @@ appear in expressions which are structured into statements.
     
 Literals
 --------
-Literals are either string literals, numbers, missing or null ::
+Literals are either string literals, numbers, missing or null. ::
 
     literal = SHORTSTRING | LONGSTRING | INTEGER | HEXINT | OCTINT | BININT | NULL | MISSING | real | imaginary ;
     
@@ -271,19 +271,19 @@ the slice step.
 There is no ambiguity in the use of square brackets for slicing and
 subscription, as category objects have no predefined ordering and therefore `<category>[0]`
 must refer to the row of `<category>` for which the key data name is equal to 0,
-rather than the "first" element of `<category`.::
+rather than the "first" element of `<category>`. ::
 
     proper_slice = short_slice | long_slice ;
     short_slice = COLON | (expression  COLON  expression) | (COLON expression) | (expression  COLON) ;
     long_slice = short_slice  COLON  expression ;
 
 `slice_lists` are composed of expressions and slices, where each entry
-in the list refers to a separate dimension of the sliced object.::
+in the list refers to a separate dimension of the sliced object. ::
 
     slice_list = (expression | proper_slice) { COMMA (expression | proper_slice) } ;
     
 A function call is an identifier followed by round brackets enclosing a list of arguments
-to the function.::
+to the function. ::
 
     call = ident  LEFTPAREN [expression_list] RIGHTPAREN ;
 
@@ -293,12 +293,12 @@ Operators
 Operators act on primaries.
 The power operator raises the primary to the power of the second expression,
 which is essentially a signed power expression.
-TODO: check that precendence is actually correct. ::
+TODO: check that precedence is actually correct. ::
 
     power = primary  [ PWR  factor ] ;
     
 A sign may optionally prefix a primary. As this has lower precedence
-than the power operation, `-1**2` equals -1.::
+than the power operation, `-1**2` equals -1. ::
 
     factor = power |  (PLUS|MINUS)  factor  ;
 
@@ -312,7 +312,7 @@ Addition and subtraction. ::
 
 We split the definition of comparison operators into two sets here so that
 we can use a subset of comparison operations in compound statements that
-allow only certain loop elements to be used.::
+allow only certain loop elements to be used. ::
 
     restricted_comp_operator = GT | LT | GTE | LTE | NEQ | ISEQUAL ;
 
@@ -330,7 +330,7 @@ negation using "NOT" can be repeated arbitrarily many times. ::
     not_test = comparison | (NOT  not_test) ;
 
 Logical AND has lower precedence than NOT, followed by logical OR. TODO: can
-we construct an expression that has an or_test in second position?::
+we construct an expression that has an or_test in second position? ::
 
     and_test = not_test  {  (AND | BADAND )  not_test } ;
     or_test  = and_test  { (OR | BADOR )  and_test } ;
@@ -387,7 +387,7 @@ that calls an 'Alert' function.
 Dotted assignments are list of assignments to dotted identifiers, used for assigning to
 multiple columns of a category object at the same time in the same row. Such assignments
 may only be performed in methods appearing in category definitions. The
-production for `dotlist` is presented above in the Primaries section.::
+production for `dotlist` is presented above in the Primaries section. ::
 
     dotlist_assign = ident "("  dotlist  ")" ;
     
