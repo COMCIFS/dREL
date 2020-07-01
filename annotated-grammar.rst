@@ -124,7 +124,7 @@ construction "t.12" could be tokenised as "ID REAL" instead of the
 manageable "ID PERIOD INTEGER", so we write out the real and imaginary
 productions using the INTEGER token to force the latter token sequence. ::
     
-    real = ((INTEGER "." [INTEGER])|("." INTEGER))[("E"|"e") ["+"|"-"] INTEGER ]
+    real = ((INTEGER PERIOD [INTEGER])|(PERIOD INTEGER))[("E"|"e") [PLUS|MINUS] INTEGER ]
 
 An imaginary number is a real or integer followed by the letter "j". ::
     
