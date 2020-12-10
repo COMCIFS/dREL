@@ -21,7 +21,8 @@ have been included that may require approval from COMCIFS.  In particular:
    remove ambiguity.
 
 4. Literal 'missing' ('?') and 'null' have been added to the language
-
+5. The namespace separator ':' has been added
+   
 The EBNF used here differs from the ISO standard as follows:
 
 1. Sequences of characters may be presented as single strings
@@ -53,6 +54,7 @@ Delimiters are discussed in the context of their use, below.
     COMMA = ","
     COLON = ":"
     SEMI = ";"
+    DOUBLECOLON = "::"
 
 Operators
 ~~~~~~~~~
@@ -188,10 +190,20 @@ Literals are either string literals, numbers, missing or null. ::
 Atoms
 -----
 
-We include a production for an identifier to allow generated parsers an entry point
-to manipulate the representation of the identifier. ::
+This production included to allow auto-generated parsers a hook to attach
+an action to.::
 
     ident = ID ;
+
+An identifier can be prefixed by a namespace to allow disambiguation where
+several dictionaries are available in the context.::
+
+    nspace = ID DOUBLECOLON ;
+
+Namespaces only make sense in certain contexts, so we provide a production
+for those cases.::
+
+    nident = [ nspace ] ident ;
     
 The fundamental building blocks of expressions are identifiers, literals and
 enclosures.  An enclosure is either a list, a table or a list of
@@ -222,7 +234,7 @@ also containing a period, which is also used for attribute references,
 we define a restricted subset of primaries for use with attribute
 references. ::
 
-    att_primary = ident | attributeref | subscription | call ;
+    att_primary = nident | attributeref | subscription | call ;
     primary = att_primary | literal | enclosure ;
 
 An attribute reference of form `<cat>.<object>` is created from a
@@ -285,7 +297,7 @@ in the list refers to a separate dimension of the sliced object. ::
 A function call is an identifier followed by round brackets enclosing a list of arguments
 to the function. ::
 
-    call = ident  LEFTPAREN [expression_list] RIGHTPAREN ;
+    call = nident  LEFTPAREN [expression_list] RIGHTPAREN ;
 
 Operators
 ---------
@@ -389,7 +401,7 @@ multiple columns of a category object at the same time in the same row. Such ass
 may only be performed in methods appearing in category definitions. The
 production for `dotlist` is presented above in the Primaries section. ::
 
-    dotlist_assign = ident "("  dotlist  ")" ;
+    dotlist_assign = nident "("  dotlist  ")" ;
     
 Compound statements contain other statements. dREL defines if, for, do, loop, with, repeat
 and function definition compound statements. ::
@@ -429,17 +441,18 @@ of particular data names within `a` using attribute access
 (`a.c`). The form `Loop a as b : m` will additionally assign a
 numerical row index to `m` within `suite`. The form `Loop a as b: m
 cond n` will only perform the iteration for a particular row if the
-condition `m cond n` is true. TODO: do we really need sequence
-numbers in loops given that there is no canonical order?
+condition `m cond n` is true. Sequence numbers are useful in situations
+where a nested loop loops over the same category as the outer loop,
+so that identity can be compared.
 
-The second ``ident`` cannot be replaced with a more liberal token (for example,
+The ``nident`` cannot be replaced with a more liberal token (for example,
 ``primary`` or ``call``) as it introduces reduce conflicts in the syntax:
 for example, is ``f(a,b)`` identifier ``f`` followed by enclosure (a,b), or
 a function call?
 
 ::
 
-    loop_stmt =  LOOP ident AS ident [":"  ident  [restricted_comp_operator  ident]] suite ;
+    loop_stmt =  LOOP ident AS nident [ COLON  ident  [restricted_comp_operator  ident]] suite ;
 
 Do statements perform simple loops in the same way as FOR statements. ::
 
@@ -452,7 +465,7 @@ Repeat statements repeat the contents of `suite` until a `BREAK` statement is ca
 With statements bind a local variable to a category variable (aliasing). This is
 required if a category name would be identical to a keyword. ::
 
-    with_stmt = WITH  ident  AS  ident  suite ;
+    with_stmt = WITH  ident  AS  nident  suite ;
 
 Each argument in a function definition argument list is followed by a list with two
 elements: the container type, and the type of the object in the container. ::
