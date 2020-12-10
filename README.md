@@ -26,4 +26,6 @@ EBNF that is close to the ISO standard, with differences noted in the annotated 
 Examples/Lark directory uses the annotated grammar and the Lark parser to create a fully-functional system
 for translating dREL code to Python and recursively executing it when provided with a CIF data file.
 
+A Julia implementation of dREL is available [here](https://github.com/jamesrhester/CIF_dREL.jl).
+
 Further examples using different coding languages and CIF access libraries are welcome.
