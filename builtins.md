@@ -30,6 +30,7 @@ arguments without concern for overflow or underflow.
 | Char(integer) | Interpret the integer argument as a Unicode code point and return the corresponding character.|
 |Repr(integer) | Return a base 10 string representation of the argument. No equivalent for real numbers is currently defined.|
 |Is\_missing(arg) | Return true if the argument has value `missing`. This is the only way to test for `missing`.|
+|Unique_id() | Return an identifier for the current row that is guaranteed to be unique for the current category. When called repeatedly for the same row, the generated value is not guaranteed to be the same as previously generated for that row, but is guaranteed to be unique compared to all previous calls for the category. If any values of parent or child data names of the present data name are present, this method will return `missing` to avoid accidentally creating associations.
 | --- |
 |**Mathematical functions** |
 |Sin(number), Cos(number), Tan(number) | Sin, Cos and Tan of the argument in radians |
