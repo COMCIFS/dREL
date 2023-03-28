@@ -30,7 +30,7 @@ arguments without concern for overflow or underflow.
 | Char(integer) | Interpret the integer argument as a Unicode code point and return the corresponding character.|
 |Repr(integer) | Return a base 10 string representation of the argument. No equivalent for real numbers is currently defined.|
 |Is\_missing(arg) | Return true if the argument has value `missing`. This is the only way to test for `missing`.|
-|Current_Row() | Returns the index of the current row in the category. The row index is assigned by first grouping all rows based on the category key data items and then assigning sequential integers to the rows with each group having its own 0-based index sequence. The present data item must not be used in the grouping even if it defined as a category key data item. Use only to support legacy data names; do not use for new definitions.
+|Current\_row(data\_name) | Return the index of the current row from the category to which the `data\_name` data item belongs to. The row index is assigned by first grouping all rows based on the category key data items and then assigning sequential integers to the rows with each group having its own 0-based index sequence. The `data_name` data item must not be used in the grouping even if it defined as a category key data item. Use only to support legacy data items; do not use for new definitions.
 | --- |
 |**Mathematical functions** |
 |Sin(number), Cos(number), Tan(number) | Sin, Cos and Tan of the argument in radians |
