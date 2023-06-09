@@ -65,7 +65,7 @@ arguments without concern for overflow or underflow.
 |First(string or list), Last(string or list) | The first or last elements|
 |Strip(string or list, integer) | Remove an element from the string or list, returning a new list. The second argument is the element position, counting from zero|
 |Drop_missing(list) | Remove all `missing` elements from the list, returning a new list.|
-|Len(string or list) | The length of the string or list|
+|Len(string, list or category) | The length of the string or list, or the number of rows in the category|
 |Indexof(list,element) | Return the zero-based index of element in list, or -1 if missing|
 |Sort(list) | Sort the contents of the argument from smaller to larger, returning a new string or list|
 |Reverse(string or list) | Reverse the contents of the argument, returning a new string or list|
