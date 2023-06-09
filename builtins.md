@@ -36,7 +36,7 @@ arguments without concern for overflow or underflow.
 |**Mathematical functions** |
 |Sin(number), Cos(number), Tan(number) | Sin, Cos and Tan of the argument in radians |
 |Sind(number), Cosd(number), Tand(number) | Sin, Cos and Tan of the argument in degrees |
-|Asin(number), Acos(number), Atan(number) | Arcsin, Arccos and Arctan of the argument as radians. The return value is in the range [-π/2, π/2] for asin and atan, and [0, π]for acos.|
+|Asin(number), Acos(number), Atan(number) | Arcsin, Arccos and Arctan of the argument as radians. The return value is in the range [-π/2, π/2] for asin and atan, and [0, π] for acos.|
 |Asind(number), Acosd(number), Atand(number) | Arcsin, Arccos and Arctan of the argument as degrees. The return value is in the range [-90,90] for asin and atan, and [0,180] for acos|
 |Atan2(number,number), Atan2d(number, number) | Arctan of argument1/argument2 in radians and degrees, respectively. The returned value will respect the quadrant as determined by the signs of the arguments.|
 |Phase(complex) | The phase in radians of the complex argument.|
