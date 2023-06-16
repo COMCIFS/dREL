@@ -27,7 +27,7 @@ arguments without concern for overflow or underflow.
 | Table(arg1,arg2,arg3,arg4,...) | Convert the arguments into a table {arg1:arg2, arg3:arg4,...}. Odd-numbered arguments must be strings.|
 | Matrix([[arg\_1\_1, ..., arg\_1\_n], ..., [arg\_m\_1, ..., arg\_m\_n]]), Matrix([arg\_1, ..., arg\_n]) | Convert a list of equal-sized lists into a matrix. Covert a single list into a vector which is automatically interpreted as a row vector or a column vector based on the context. |
 | Numb(string) | Convert a string into a number assuming ASCII encoding for digits. Decimal point is the period character. |
-| AtoI(string) | Convert a string into an integer assuming ASCII encoding for digits. |
+| AtoI(character) | Convert a single ASCII character into an integer. |
 | Caseless(string) | Convert the string into a caseless string |
 | Char(integer) | Interpret the integer argument as a Unicode code point and return the corresponding character.|
 |Repr(integer) | Return a base 10 string representation of the argument. No equivalent for real numbers is currently defined.|
