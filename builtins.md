@@ -28,6 +28,8 @@ arguments without concern for overflow or underflow.
 | Matrix([[arg\_1\_1, ..., arg\_1\_n], ..., [arg\_m\_1, ..., arg\_m\_n]]), Matrix([arg\_1, ..., arg\_n]) | Convert a list of equal-sized lists into a matrix. Covert a single list into a vector which is automatically interpreted as a row vector or a column vector based on the context. |
 | AtoI(character) | Convert a single ASCII character into an integer. |
 | Caseless(string) | Convert the string into a caseless string |
+| Upper(string or character) | Return the string or character in upper case |
+| Lower(string or character) | Return the string or character in lower case |
 | Char(integer) | Interpret the integer argument as a Unicode code point and return the corresponding character.|
 |Repr(integer) | Return a base 10 string representation of the argument. No equivalent for real numbers is currently defined.|
 |Is\_missing(arg) | Return true if the argument has value `missing`. This is the only way to test for `missing`.|
