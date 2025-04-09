@@ -39,8 +39,8 @@ arguments without concern for overflow or underflow.
 | **Mathematical functions** |
 | Sin(number), Cos(number), Tan(number) | Sin, Cos and Tan of the argument in radians. |
 | Sind(number), Cosd(number), Tand(number) | Sin, Cos and Tan of the argument in degrees. |
-| Asin(number), Acos(number), Atan(number) | Arcsin, Arccos and Arctan of the argument as radians. The return value is in the range [-π/2, π/2] for asin and atan, and [0, π] for acos. |
-| Asind(number), Acosd(number), Atand(number) | Arcsin, Arccos and Arctan of the argument as degrees. The return value is in the range [-90,90] for asin and atan, and [0,180] for acos. |
+| Asin(number), Acos(number), Atan(number) | Arcsin, Arccos and Arctan of the argument as radians. The return value is in the range $[-π/2, π/2]$ for asin and atan, and $[0, π]$ for acos. |
+| Asind(number), Acosd(number), Atand(number) | Arcsin, Arccos and Arctan of the argument as degrees. The return value is in the range $[-90, 90]$ for asin and atan, and $[0, 180]$ for acos. |
 | Atan2(number,number), Atan2d(number, number) | Arctan of argument1/argument2 in radians and degrees, respectively. The returned value will respect the quadrant as determined by the signs of the arguments. |
 | Phase(complex) | The phase in radians of the complex argument. |
 | Magn(number or complex) | The magnitude of the complex argument. Real or integer arguments are returned unchanged. |
@@ -48,7 +48,7 @@ arguments without concern for overflow or underflow.
 | ExpImag(number) | $e^{i\ argument}$ where $i=\sqrt{-1}$. |
 | Log(number) | The base-10 logarithm of the argument. The argument must be a real number greater than zero. |
 | Ln(number) | The natural logarithm of the argument. The argument must be a real number greater than zero. |
-| Pi, TwoPi | (constants) Values of π and 2π. |
+| Pi, TwoPi | (constants) Values of $π$ and $2π$. |
 | Sqrt(number) | The positive square root of the real argument. If the argument is negative a complex number is returned. |
 | Mod(integer,integer) | The modulus of argument1 to base argument2. |
 | Abs(number) | The absolute value of the real argument. |
