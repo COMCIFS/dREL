@@ -17,60 +17,60 @@ arguments without concern for overflow or underflow.
 
 | Calling signature | Description |
 | ----------------- | ----------- |
-| Complex(number, integer) | Convert the two arguments Real, Imag into a complex number |
-| Real(complex) | Return the real part of the complex argument |
-| Imag(complex) | Return the imaginary part of the complex argument |
-| Integer(number) | Convert the argument to an integer, rounding towards zero. An integer argument is returned unchanged |
-| Float(number) | Convert the argument to a real number. A real argument is returned unchanged |
-| Rem(number) | The remainder of a real number is returned. Zero is returned for an integer argument.|
-| List(arg1,arg2,arg3,...) | Convert the arguments into a list [arg1,arg2,arg3,...] |
-| Table(arg1,arg2,arg3,arg4,...) | Convert the arguments into a table {arg1:arg2, arg3:arg4,...}. Odd-numbered arguments must be strings.|
+| Complex(number, integer) | Convert the two arguments Real, Imag into a complex number. |
+| Real(complex) | Return the real part of the complex argument. |
+| Imag(complex) | Return the imaginary part of the complex argument. |
+| Integer(number) | Convert the argument to an integer, rounding towards zero. An integer argument is returned unchanged. |
+| Float(number) | Convert the argument to a real number. A real argument is returned unchanged. |
+| Rem(number) | The remainder of a real number is returned. Zero is returned for an integer argument. |
+| List(arg1,arg2,arg3,...) | Convert the arguments into a list [arg1,arg2,arg3,...]. |
+| Table(arg1,arg2,arg3,arg4,...) | Convert the arguments into a table {arg1:arg2, arg3:arg4,...}. Odd-numbered arguments must be strings. |
 | Matrix([[arg\_1\_1, ..., arg\_1\_n], ..., [arg\_m\_1, ..., arg\_m\_n]]), Matrix([arg\_1, ..., arg\_n]) | Convert a list of equal-sized lists into a matrix. Covert a single list into a vector which is automatically interpreted as a row vector or a column vector based on the context. |
 | AtoI(character) | Convert a single ASCII character into an integer. |
-| Caseless(string) | Convert the string into a caseless string |
-| Upper(string or character) | Return the string or character in upper case |
-| Lower(string or character) | Return the string or character in lower case |
-| Char(integer) | Interpret the integer argument as a Unicode code point and return the corresponding character.|
-|Repr(integer) | Return a base 10 string representation of the argument. No equivalent for real numbers is currently defined.|
-|Is\_missing(arg) | Return true if the argument has value `missing`. This is the only way to test for `missing`.|
+| Caseless(string) | Convert the string into a caseless string. |
+| Upper(string or character) | Return the string or character in upper case. |
+| Lower(string or character) | Return the string or character in lower case. |
+| Char(integer) | Interpret the integer argument as a Unicode code point and return the corresponding character. |
+| Repr(integer) | Return a base 10 string representation of the argument. No equivalent for real numbers is currently defined. |
+| Is\_missing(arg) | Return true if the argument has value `missing`. This is the only way to test for `missing`. |
 | Unique\_id(string) |  The argument is a string that identifies a data item presented in the form of `cat.obj`  where `cat` matches a category id and `obj` matches an object id within that category. Generate an identifier that is unique amongst all values of `cat.obj`. If any values of parent or child data items of `cat.obj` are present in the data set, this method will return missing to avoid accidentally creating incorrect associations. |
 | Current\_row(string) | The argument is a string that identifies a data item presented in the form of `cat.obj`  where `cat` matches a category id and `obj` matches an object id within that category. Return the index of the current row in the `cat` category. The row index is assigned by first grouping all rows based on the category key data items and then assigning sequential integers to the rows with each group having its own 0-based index sequence. The `cat.obj` data item must not be used in the grouping even if it is defined as a category key data item. Use only to support legacy data items; do not use for new definitions. |
 | --- |
-|**Mathematical functions** |
-|Sin(number), Cos(number), Tan(number) | Sin, Cos and Tan of the argument in radians |
-|Sind(number), Cosd(number), Tand(number) | Sin, Cos and Tan of the argument in degrees |
-|Asin(number), Acos(number), Atan(number) | Arcsin, Arccos and Arctan of the argument as radians. The return value is in the range [-π/2, π/2] for asin and atan, and [0, π] for acos.|
-|Asind(number), Acosd(number), Atand(number) | Arcsin, Arccos and Arctan of the argument as degrees. The return value is in the range [-90,90] for asin and atan, and [0,180] for acos|
-|Atan2(number,number), Atan2d(number, number) | Arctan of argument1/argument2 in radians and degrees, respectively. The returned value will respect the quadrant as determined by the signs of the arguments.|
-|Phase(complex) | The phase in radians of the complex argument.|
-|Magn(number or complex) | The magnitude of the complex argument. Real or integer arguments are returned unchanged.|
-|Exp(number) | $e^{argument}$ where argument is a real number.|
-|ExpImag(number) | $e^{i\ argument}$ where $i=\sqrt{-1}$|
-|Log(number) | The base-10 logarithm of the argument. The argument must be a real number greater than zero.|
-|Ln(number) | The natural logarithm of the argument. The argument must be a real number greater than zero.|
-|Pi, TwoPi | (constants) Values of π and 2π|
-|Sqrt(number) | The positive square root of the real argument. If the argument is negative a complex number is returned.|
-|Mod(integer,integer) | The modulus of argument1 to base argument2|
-|Abs(number) | The absolute value of the real argument|
-|Sign(number,number) | The sign of argument2 is applied to argument1|
-|Minor(matrix) | Return a matrix of minor elements|
-|Cofactor(matrix) | Return the cofactor elements of the matrix|
-|Adjoint(matrix) | Generate the adjoint matrix|
-|Inverse(matrix) | Generate the inverse matrix|
-|Transpose(matrix) | Transpose the matrix|
-|Eigen(matrix) | Calculate eigenvalues and eigenvectors of the 3x3 matrix argument. The return value is a 3-element list. Each element in this list is itself a list of 4 elements, where the first element is the eigenvalue and the next three the eigenvector.|
-|Det(matrix) | Matrix determinant|
-|Dot(arg1,arg2) | Dot product of the matrix arguments.|
-|Cross(arg1,arg2) | Cross product of the matrix arguments. The binary operator “^” is also available|
-|Norm(arg1) | The root mean square value of the elements in an array or vector|
+| **Mathematical functions** |
+| Sin(number), Cos(number), Tan(number) | Sin, Cos and Tan of the argument in radians. |
+| Sind(number), Cosd(number), Tand(number) | Sin, Cos and Tan of the argument in degrees. |
+| Asin(number), Acos(number), Atan(number) | Arcsin, Arccos and Arctan of the argument as radians. The return value is in the range $[-π/2, π/2]$ for asin and atan, and $[0, π]$ for acos. |
+| Asind(number), Acosd(number), Atand(number) | Arcsin, Arccos and Arctan of the argument as degrees. The return value is in the range $[-90, 90]$ for asin and atan, and $[0, 180]$ for acos. |
+| Atan2(number,number), Atan2d(number, number) | Arctan of argument1/argument2 in radians and degrees, respectively. The returned value will respect the quadrant as determined by the signs of the arguments. |
+| Phase(complex) | The phase in radians of the complex argument. |
+| Magn(number or complex) | The magnitude of the complex argument. Real or integer arguments are returned unchanged. |
+| Exp(number) | $e^{argument}$ where argument is a real number. |
+| ExpImag(number) | $e^{i\ argument}$ where $i=\sqrt{-1}$. |
+| Log(number) | The base-10 logarithm of the argument. The argument must be a real number greater than zero. |
+| Ln(number) | The natural logarithm of the argument. The argument must be a real number greater than zero. |
+| Pi, TwoPi | (constants) Values of $π$ and $2π$. |
+| Sqrt(number) | The positive square root of the real argument. If the argument is negative a complex number is returned. |
+| Mod(integer,integer) | The modulus of argument1 to base argument2. |
+| Abs(number) | The absolute value of the real argument. |
+| Sign(number,number) | The sign of argument2 is applied to argument1. |
+| Minor(matrix) | Return a matrix of minor elements. |
+| Cofactor(matrix) | Return the cofactor elements of the matrix. |
+| Adjoint(matrix) | Generate the adjoint matrix. |
+| Inverse(matrix) | Generate the inverse matrix. |
+| Transpose(matrix) | Transpose the matrix. |
+| Eigen(matrix) | Calculate eigenvalues and eigenvectors of the 3x3 matrix argument. The return value is a 3-element list. Each element in this list is itself a list of 4 elements, where the first element is the eigenvalue and the next three the eigenvector. |
+| Det(matrix) | Matrix determinant. |
+| Dot(arg1,arg2) | Dot product of the matrix arguments. |
+| Cross(arg1,arg2) | Cross product of the matrix arguments. The binary operator “^” is also available. |
+| Norm(arg1) | The root mean square value of the elements in an array or vector. |
 | --- |
-|**Structure examination and manipulation** |
-|First(string or list), Last(string or list) | The first or last elements|
-|Strip(string or list, integer) | Remove an element from the string or list, returning a new list. The second argument is the element position, counting from zero|
-|Drop_missing(list) | Remove all `missing` elements from the list, returning a new list.|
-|Len(string, list or <cat>) | The length of the string or list, or the number of rows in the `<cat>` category.|
-|Indexof(list,element) | Return the zero-based index of element in list, or -1 if missing|
-|Sort(list) | Sort the contents of the argument from smaller to larger, returning a new string or list|
-|Reverse(string or list) | Reverse the contents of the argument, returning a new string or list|
-|Dim(array) | Return an integer array of dimensions|
-|Split(string,character) | Return an array of strings derived by splitting the supplied string at each occurrence of the character. The character is not included in the returned array. If no such character is present, the string is returned unchanged.|
+| **Structure examination and manipulation** |
+| First(string or list), Last(string or list) | The first or last elements. |
+| Strip(string or list, integer) | Remove an element from the string or list, returning a new list. The second argument is the element position, counting from zero. |
+| Drop_missing(list) | Remove all `missing` elements from the list, returning a new list. |
+| Len(string, list or \<cat\>) | The length of the string or list, or the number of rows in the `<cat>` category. |
+| Indexof(list,element) | Return the zero-based index of element in list, or -1 if missing. |
+| Sort(list) | Sort the contents of the argument from smaller to larger, returning a new string or list. |
+| Reverse(string or list) | Reverse the contents of the argument, returning a new string or list. |
+| Dim(array) | Return an integer array of dimensions. |
+| Split(string,character) | Return an array of strings derived by splitting the supplied string at each occurrence of the character. The character is not included in the returned array. If no such character is present, the string is returned unchanged. |
